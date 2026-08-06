@@ -1,0 +1,38 @@
+.main-header {
+  width: 100%;
+  min-height: 75px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 40px;
+  background: white;
+  border-bottom: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+.logo-link {
+  display: flex;
+  align-items: center;
+}
+
+.header-logo {
+  width: 150px;
+  height: 55px;
+  object-fit: contain;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+}
+
+.header-nav a {
+  text-decoration: none;
+  color: #222;
+  font-weight: 600;
+}
+
+.header-nav a:hover {
+  color: #2563eb;
+}

@@ -1,0 +1,22 @@
+import { Link } from "react-router-dom";
+import logo from "../assets/logo.jfif";
+import "../styles/Header.css";
+
+function Header() {
+  return (
+    <header className="main-header">
+      <Link to="/register" className="logo-link">
+        <img src={logo} alt="Doctoralia Logo" className="header-logo" />
+      </Link>
+
+      <nav className="header-nav">
+        <Link to="/register">Admin Registration</Link>
+        <Link to="/login">Admin Login</Link>
+        <Link to="/doctor-registration">Doctor Registration</Link>
+        <Link to="/doctor-login">Doctor Login</Link>
+      </nav>
+    </header>
+  );
+}
+
+export default Header;
