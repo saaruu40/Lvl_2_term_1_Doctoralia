@@ -2,8 +2,12 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 
+// const {
+//   applyDoctor,
+// } = require("../controllers/doctorController");
 const {
   applyDoctor,
+  loginDoctor,
 } = require("../controllers/doctorController");
 
 const router = express.Router();
@@ -50,5 +54,5 @@ router.post(
   upload.single("profile_photo"),
   applyDoctor
 );
-
+router.post("/login", loginDoctor);
 module.exports = router;
