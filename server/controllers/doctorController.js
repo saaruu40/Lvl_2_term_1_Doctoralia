@@ -93,6 +93,63 @@ const applyDoctor = async (req, res) => {
   }
 };
 
+const loginDoctor = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const result = await pool.query(
+      `SELECT doctor_id, full_name, email, password, approved_by
+       FROM doctor
+       WHERE email = $1`,
+      [email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
+    }
+
+    const doctor = result.rows[0];
+
+    const passwordMatched = await bcrypt.compare(
+      password,
+      doctor.password
+    );
+
+    if (!passwordMatched) {
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
+    }
+
+    if (doctor.approved_by === null) {
+      return res.status(403).json({
+        message: "Your account is waiting for admin approval.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Doctor login successful.",
+      doctor: {
+        doctor_id: doctor.doctor_id,
+        full_name: doctor.full_name,
+        email: doctor.email,
+      },
+    });
+  } catch (error) {
+    console.error("Doctor login error:", error);
+
+    return res.status(500).json({
+      message: "Doctor login failed.",
+      error: error.message,
+    });
+  }
+};
+// module.exports = {
+//   applyDoctor,
+// };
 module.exports = {
   applyDoctor,
+  loginDoctor,
 };

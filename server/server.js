@@ -7,6 +7,7 @@ const pool = require("./config/db");
 const doctorRoutes = require("./routes/doctorRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const patientRoutes = require("./routes/patientRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use(
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/patients", patientRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.json({
