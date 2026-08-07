@@ -33,3 +33,29 @@ CREATE TABLE department (
     department_name VARCHAR(100) UNIQUE NOT NULL,
     description TEXT
 );
+
+CREATE TABLE staff (
+    staff_id SERIAL PRIMARY KEY,
+
+    admin_id INTEGER REFERENCES admin(admin_id),
+
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    gender VARCHAR(20) NOT NULL,
+
+    profile_pic TEXT
+);
+
+CREATE TABLE patient (
+    patient_id SERIAL PRIMARY KEY,
+
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    gender VARCHAR(20) NOT NULL,
+    date_of_birth DATE NOT NULL,
+    blood_group VARCHAR(10) NOT NULL,
+    address TEXT NOT NULL
+);

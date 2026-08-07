@@ -14,6 +14,10 @@ function Header() {
         <Link to="/login">Admin Login</Link>
         <Link to="/doctor-registration">Doctor Registration</Link>
         <Link to="/doctor-login">Doctor Login</Link>
+        <Link to="/staff-registration">Staff Registration</Link>
+        <Link to="/staff-login">Staff Login</Link>
+        <Link to="/patient-registration">Patient Sign Up</Link>
+        <Link to="/patient-login">Patient Login</Link>
       </nav>
     </header>
   );

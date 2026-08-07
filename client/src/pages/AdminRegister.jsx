@@ -197,8 +197,8 @@ function AdminRegister() {
         <p className="login-text">
           Already have an account?{" "}
           <Link to="/login" className="login-link">
-         Login
-  </Link>
+            Login
+          </Link>
         </p>
       </section>
     </main>
