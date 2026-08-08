@@ -8,15 +8,12 @@ const doctorRoutes = require("./routes/doctorRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const patientRoutes = require("./routes/patientRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const departmentRoutes = require("./routes/departmentRoutes");
+
 
 const app = express();
 
-// app.use(
-//   cors({
-//     origin: "http://localhost:5173",
-//     credentials: true,
-//   })
-// );
+
 app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174"],
@@ -36,6 +33,11 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/departments", departmentRoutes);
+app.use(
+  "/api/patients",
+  patientRoutes
+);
 
 app.get("/", (req, res) => {
   res.json({

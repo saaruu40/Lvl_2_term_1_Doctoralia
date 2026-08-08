@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS patient (
     gender VARCHAR(20),
     date_of_birth DATE,
     blood_group VARCHAR(10),
-    address TEXT
+    address TEXT,
+    suspended_until TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS hospital (
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS staff (
     phone_number VARCHAR(20),
     gender VARCHAR(20),
     profile_pic TEXT,
+    approval_status VARCHAR(10) default 'pending',
+     suspended_until TIMESTAMP,
 
     CONSTRAINT fk_staff_admin
         FOREIGN KEY (admin_id)
@@ -81,6 +84,8 @@ CREATE TABLE IF NOT EXISTS doctor (
     followup_fee NUMERIC(10,2),
     max_patient_num INTEGER,
     profile_photo TEXT,
+    approval_status VARCHAR(20) default 'pending',
+    suspended_until TIMESTAMP,
 
     CONSTRAINT fk_doctor_department
         FOREIGN KEY (department_id)
@@ -106,16 +111,26 @@ CREATE TABLE IF NOT EXISTS schedule (
 
 CREATE TABLE IF NOT EXISTS appointment (
     appointment_id SERIAL PRIMARY KEY,
-    patient_id INTEGER,
+
+    patient_id INTEGER NOT NULL,
+    doctor_id INTEGER NOT NULL,
+
     hospital_id INTEGER,
     schedule_id INTEGER,
-    booking_date DATE,
-    appointment_status VARCHAR(50),
+
+    booking_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    appointment_status VARCHAR(50) DEFAULT 'pending',
+
     cancelled_by_staff_id INTEGER,
 
     CONSTRAINT fk_appointment_patient
         FOREIGN KEY (patient_id)
         REFERENCES patient(patient_id),
+
+    CONSTRAINT fk_appointment_doctor
+        FOREIGN KEY (doctor_id)
+        REFERENCES doctor(doctor_id),
 
     CONSTRAINT fk_appointment_hospital
         FOREIGN KEY (hospital_id)
@@ -125,7 +140,7 @@ CREATE TABLE IF NOT EXISTS appointment (
         FOREIGN KEY (schedule_id)
         REFERENCES schedule(schedule_id),
 
-    CONSTRAINT fk_appointment_cancelled_by_staff
+    CONSTRAINT fk_appointment_staff
         FOREIGN KEY (cancelled_by_staff_id)
         REFERENCES staff(staff_id)
 );
@@ -178,11 +193,16 @@ CREATE TABLE IF NOT EXISTS prescription_test (
 
 CREATE TABLE IF NOT EXISTS payment (
     payment_id SERIAL PRIMARY KEY,
-    appointment_id INTEGER,
-    amount NUMERIC(10,2),
+
+    appointment_id INTEGER NOT NULL,
+
+    amount NUMERIC(10,2) NOT NULL,
+
     payment_method VARCHAR(50),
-    payment_status VARCHAR(50),
-    payment_date TIMESTAMP,
+
+    payment_status VARCHAR(50) DEFAULT 'pending',
+
+    payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_payment_appointment
         FOREIGN KEY (appointment_id)
@@ -191,36 +211,58 @@ CREATE TABLE IF NOT EXISTS payment (
 
 CREATE TABLE IF NOT EXISTS complaint (
     complaint_id SERIAL PRIMARY KEY,
-    patient_id INTEGER,
-    doctor_id INTEGER,
-    staff_id INTEGER,
+
+    filed_by_patient_id INTEGER,
+    filed_by_doctor_id INTEGER,
+    filed_by_staff_id INTEGER,
+
+    against_patient_id INTEGER,
+    against_doctor_id INTEGER,
+    against_staff_id INTEGER,
+
     appointment_id INTEGER,
+
     reviewed_by INTEGER,
-    complaint_type VARCHAR(100),
-    description TEXT,
-    complaint_date TIMESTAMP,
-    complaint_status VARCHAR(50),
+
+    complaint_type VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+
+    complaint_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    complaint_status VARCHAR(50)
+        DEFAULT 'pending',
+
     admin_action TEXT,
 
-    CONSTRAINT fk_complaint_patient
-        FOREIGN KEY (patient_id)
+    CONSTRAINT fk_complaint_filed_patient
+        FOREIGN KEY (filed_by_patient_id)
         REFERENCES patient(patient_id),
 
-    CONSTRAINT fk_complaint_doctor
-        FOREIGN KEY (doctor_id)
+    CONSTRAINT fk_complaint_filed_doctor
+        FOREIGN KEY (filed_by_doctor_id)
         REFERENCES doctor(doctor_id),
 
-    CONSTRAINT fk_complaint_staff
-        FOREIGN KEY (staff_id)
+    CONSTRAINT fk_complaint_filed_staff
+        FOREIGN KEY (filed_by_staff_id)
         REFERENCES staff(staff_id),
 
-    CONSTRAINT fk_complaint_appointment
-        FOREIGN KEY (appointment_id)
-        REFERENCES appointment(appointment_id),
+    CONSTRAINT fk_complaint_against_patient
+        FOREIGN KEY (against_patient_id)
+        REFERENCES patient(patient_id),
+
+    CONSTRAINT fk_complaint_against_doctor
+        FOREIGN KEY (against_doctor_id)
+        REFERENCES doctor(doctor_id),
+
+    CONSTRAINT fk_complaint_against_staff
+        FOREIGN KEY (against_staff_id)
+        REFERENCES staff(staff_id),
 
     CONSTRAINT fk_complaint_reviewed_by
         FOREIGN KEY (reviewed_by)
         REFERENCES admin(admin_id)
+
+ 
 );
 
 CREATE TABLE IF NOT EXISTS referral (

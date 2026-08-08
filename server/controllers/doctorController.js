@@ -98,7 +98,7 @@ const loginDoctor = async (req, res) => {
     const { email, password } = req.body;
 
     const result = await pool.query(
-      `SELECT doctor_id, full_name, email, password, approved_by
+      `SELECT doctor_id, full_name, email, password, approved_by,approval_status
        FROM doctor
        WHERE email = $1`,
       [email]
@@ -123,12 +123,16 @@ const loginDoctor = async (req, res) => {
       });
     }
 
-    if (doctor.approved_by === null) {
+    if (doctor.approval_status === pending) {
       return res.status(403).json({
         message: "Your account is waiting for admin approval.",
       });
     }
-
+if (doctor.approval_status === "rejected") {
+  return res.status(403).json({
+    message: "Your doctor application was rejected.",
+  });
+}
     return res.status(200).json({
       message: "Doctor login successful.",
       doctor: {

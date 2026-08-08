@@ -30,22 +30,30 @@ const PatientLogin = () => {
     try {
       setLoading(true);
 
-      const response = await fetch("http://localhost:5000/api/patients/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(formData),
-      });
+      const response = await fetch(
+        "http://localhost:5000/api/patients/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify(formData),
+        }
+      );
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || "Patient login failed.");
+        throw new Error(
+          result.message || "Patient login failed."
+        );
       }
 
-      localStorage.setItem("patient", JSON.stringify(result.patient));
+      localStorage.setItem(
+        "patient",
+        JSON.stringify(result.patient)
+      );
 
       setMessageType("success");
       setMessage("Login successful.");
@@ -61,56 +69,76 @@ const PatientLogin = () => {
 
   return (
     <div className="doctor-auth-page">
-      <div className="doctor-login-card">
-        <div className="doctor-auth-header">
+      <div className="doctor-auth-container">
+        <div className="doctor-auth-card">
+
           <h1>Patient Login</h1>
-          <p>Login to your patient account</p>
-        </div>
 
-        {message && (
-          <div className={`doctor-message ${messageType}`}>{message}</div>
-        )}
+          <p className="doctor-auth-subtitle">
+            Login to your patient account
+          </p>
 
-        <form onSubmit={handleSubmit} className="doctor-form">
-          <div className="doctor-form-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter email address"
-              required
-            />
-          </div>
+          {message && (
+            <div
+              className={`doctor-message ${messageType}`}
+            >
+              {message}
+            </div>
+          )}
 
-          <div className="doctor-form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter password"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="doctor-submit-button"
-            disabled={loading}
+          <form
+            onSubmit={handleSubmit}
+            className="doctor-form"
           >
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
+            <div className="doctor-form-group">
+              <label htmlFor="email">
+                Email Address
+              </label>
 
-        <p className="doctor-auth-footer">
-          New Patient?{" "}
-          <Link to="/patient-registration">Sign Up</Link>
-        </p>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="Enter email address"
+                required
+              />
+            </div>
+
+            <div className="doctor-form-group">
+              <label htmlFor="password">
+                Password
+              </label>
+
+              <input
+                type="password"
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter password"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="doctor-submit-button"
+              disabled={loading}
+            >
+              {loading ? "Logging in..." : "Login"}
+            </button>
+          </form>
+
+          <p className="doctor-auth-footer">
+            New Patient?{" "}
+            <Link to="/patient-registration">
+              Sign Up
+            </Link>
+          </p>
+
+        </div>
       </div>
     </div>
   );

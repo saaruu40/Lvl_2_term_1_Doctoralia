@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link,useNavigate } from "react-router-dom";
 import "../styles/AdminLogin.css";
 
 function AdminLogin() {
@@ -24,25 +24,71 @@ function AdminLogin() {
     setMessageType("");
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  // const handleSubmit = (event) => {
+  //   event.preventDefault();
 
-    if (!formData.email.trim() || !formData.password) {
-      setMessage("Please enter your email and password.");
-      setMessageType("error");
-      return;
+  //   if (!formData.email.trim() || !formData.password) {
+  //     setMessage("Please enter your email and password.");
+  //     setMessageType("error");
+  //     return;
+  //   }
+
+  //   setMessage("Admin Login Successful!");
+  //   setMessageType("success");
+
+  //   setFormData({
+  //     email: "",
+  //     password: "",
+  //   });
+
+  //   setShowPassword(false);
+  // };
+  const navigate = useNavigate();
+
+const handleSubmit = async (event) => {
+  event.preventDefault();
+
+  if (!formData.email.trim() || !formData.password) {
+    setMessage("Please enter your email and password.");
+    setMessageType("error");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/admin/login",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.message || "Admin login failed."
+      );
     }
 
-    setMessage("Admin Login Successful!");
+    localStorage.setItem(
+      "admin",
+      JSON.stringify(result.admin)
+    );
+
     setMessageType("success");
+    setMessage("Admin Login Successful!");
 
-    setFormData({
-      email: "",
-      password: "",
-    });
+    navigate("/admin-dashboard");
 
-    setShowPassword(false);
-  };
+  } catch (error) {
+    setMessageType("error");
+    setMessage(error.message);
+  }
+};
 
   return (
     <main className="admin-login-page">

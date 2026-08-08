@@ -82,7 +82,8 @@ const loginStaff = async (req, res) => {
         password,
         phone_number,
         gender,
-        profile_pic
+        profile_pic,
+        approval_status
        FROM staff
        WHERE email = $1`,
       [email]
@@ -95,13 +96,17 @@ const loginStaff = async (req, res) => {
     }
 
     const staff = result.rows[0];
+if (staff.approval_status === "pending") {
+  return res.status(403).json({
+    message: "Your account is waiting for admin approval.",
+  });
+}
 
-    if (staff.admin_id === null) {
-      return res.status(403).json({
-        message:
-          "Your account is not approved yet. Please wait for admin approval.",
-      });
-    }
+if (staff.approval_status === "rejected") {
+  return res.status(403).json({
+    message: "Your staff application was rejected.",
+  });
+}
 
     const isPasswordValid = await bcrypt.compare(password, staff.password);
 

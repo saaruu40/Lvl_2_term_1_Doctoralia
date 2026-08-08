@@ -1,30 +1,149 @@
-import { Routes, Route, Navigate } from "react-router-dom";
 
-import Header from "./components/Header.jsx";
+// import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
-import AdminRegister from "./pages/AdminRegister.jsx";
-import AdminLogin from "./pages/AdminLogin.jsx";
-import DoctorRegistration from "./pages/DoctorRegistration.jsx";
-import DoctorLogin from "./pages/DoctorLogin.jsx";
-import StaffRegistration from "./pages/StaffRegistration.jsx";
-import StaffLogin from "./pages/StaffLogin.jsx";
-import PatientRegistration from "./pages/PatientRegistration.jsx";
-import PatientLogin from "./pages/PatientLogin.jsx";
+// import Header from "./components/Header";
+// import AdminRegister from "./pages/AdminRegister";
+// import AdminLogin from "./pages/AdminLogin";
+// import DoctorRegistration from "./pages/DoctorRegistration";
+// import DoctorLogin from "./pages/DoctorLogin";
+// import StaffRegistration from "./pages/StaffRegistration";
+// import StaffLogin from "./pages/StaffLogin";
+// import PatientRegistration from "./pages/PatientRegistration";
+// import PatientLogin from "./pages/PatientLogin";
+// import AdminDashboard from "./pages/AdminDashboard";
+
+// function App() {
+//   const location = useLocation();
+
+//   const hideHeader =
+//     location.pathname === "/admin-dashboard";
+
+//   return (
+//     <>
+//       {!hideHeader && <Header />}
+
+//       <Routes>
+//         <Route
+//           path="/"
+//           element={<Navigate to="/register" replace />}
+//         />
+
+//         <Route path="/register" element={<AdminRegister />} />
+//         <Route path="/login" element={<AdminLogin />} />
+
+//         <Route
+//           path="/doctor-registration"
+//           element={<DoctorRegistration />}
+//         />
+//         <Route
+//           path="/doctor-login"
+//           element={<DoctorLogin />}
+//         />
+
+//         <Route
+//           path="/staff-registration"
+//           element={<StaffRegistration />}
+//         />
+//         <Route
+//           path="/staff-login"
+//           element={<StaffLogin />}
+//         />
+
+//         <Route
+//           path="/patient-registration"
+//           element={<PatientRegistration />}
+//         />
+//         <Route
+//           path="/patient-login"
+//           element={<PatientLogin />}
+//         />
+
+//         <Route
+//           path="/admin-dashboard"
+//           element={<AdminDashboard />}
+//         />
+//       </Routes>
+//     </>
+//   );
+// }
+
+// export default App;
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
+
+import Header from "./components/Header";
+
+import AdminRegister from "./pages/AdminRegister";
+import AdminLogin from "./pages/AdminLogin";
+
+import DoctorRegistration from "./pages/DoctorRegistration";
+import DoctorLogin from "./pages/DoctorLogin";
+
+import StaffRegistration from "./pages/StaffRegistration";
+import StaffLogin from "./pages/StaffLogin";
+
+import PatientRegistration from "./pages/PatientRegistration";
+import PatientLogin from "./pages/PatientLogin";
+
+import AdminDashboard from "./pages/AdminDashboard";
+import PatientDashboard from "./pages/PatientDashboard";
+
 
 function App() {
+  const location = useLocation();
+
+  const hideHeader =
+    location.pathname === "/admin-dashboard" ||
+    location.pathname === "/patient-dashboard";
+
   return (
     <>
-      <Header />
+      {!hideHeader && <Header />}
 
       <Routes>
-        <Route path="/" element={<Navigate to="/register" replace />} />
 
-        <Route path="/register" element={<AdminRegister />} />
-        <Route path="/login" element={<AdminLogin />} />
+        {/* DEFAULT */}
+
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to="/register"
+              replace
+            />
+          }
+        />
+
+
+        {/* ADMIN */}
+
+        <Route
+          path="/register"
+          element={<AdminRegister />}
+        />
+
+        <Route
+          path="/login"
+          element={<AdminLogin />}
+        />
+
+        <Route
+          path="/admin-dashboard"
+          element={<AdminDashboard />}
+        />
+
+
+        {/* DOCTOR */}
 
         <Route
           path="/doctor-registration"
-          element={<DoctorRegistration />}
+          element={
+            <DoctorRegistration />
+          }
         />
 
         <Route
@@ -32,21 +151,41 @@ function App() {
           element={<DoctorLogin />}
         />
 
+
+        {/* STAFF */}
+
         <Route
           path="/staff-registration"
-          element={<StaffRegistration />}
+          element={
+            <StaffRegistration />
+          }
         />
 
-        <Route path="/staff-login" element={<StaffLogin />} />
+        <Route
+          path="/staff-login"
+          element={<StaffLogin />}
+        />
+
+
+        {/* PATIENT */}
 
         <Route
           path="/patient-registration"
-          element={<PatientRegistration />}
+          element={
+            <PatientRegistration />
+          }
         />
 
-        <Route path="/patient-login" element={<PatientLogin />} />
+        <Route
+          path="/patient-login"
+          element={<PatientLogin />}
+        />
 
-        <Route path="*" element={<h1>Page Not Found</h1>} />
+        <Route
+          path="/patient-dashboard"
+          element={<PatientDashboard />}
+        />
+
       </Routes>
     </>
   );

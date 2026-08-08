@@ -28,53 +28,140 @@ function AdminRegister() {
     setMessageType("");
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  // const handleSubmit = (event) => {
+  //   event.preventDefault();
 
-    const {
-      full_name,
-      email,
-      phone_number,
-      password,
-      confirm_password,
-    } = formData;
+  //   const {
+  //     full_name,
+  //     email,
+  //     phone_number,
+  //     password,
+  //     confirm_password,
+  //   } = formData;
 
-    if (
-      !full_name.trim() ||
-      !email.trim() ||
-      !phone_number.trim() ||
-      !password ||
-      !confirm_password
-    ) {
-      setMessage("Please fill in all the fields.");
-      setMessageType("error");
-      return;
-    }
+  //   if (
+  //     !full_name.trim() ||
+  //     !email.trim() ||
+  //     !phone_number.trim() ||
+  //     !password ||
+  //     !confirm_password
+  //   ) {
+  //     setMessage("Please fill in all the fields.");
+  //     setMessageType("error");
+  //     return;
+  //   }
 
-    if (full_name.trim().length < 3) {
-      setMessage("Full name must contain at least 3 characters.");
-      setMessageType("error");
-      return;
-    }
+  //   if (full_name.trim().length < 3) {
+  //     setMessage("Full name must contain at least 3 characters.");
+  //     setMessageType("error");
+  //     return;
+  //   }
 
-    const phonePattern = /^01[3-9]\d{8}$/;
+  //   const phonePattern = /^01[3-9]\d{8}$/;
 
-    if (!phonePattern.test(phone_number)) {
-      setMessage("Enter a valid Bangladeshi phone number.");
-      setMessageType("error");
-      return;
-    }
+  //   if (!phonePattern.test(phone_number)) {
+  //     setMessage("Enter a valid Bangladeshi phone number.");
+  //     setMessageType("error");
+  //     return;
+  //   }
 
-    if (password.length < 6) {
-      setMessage("Password must contain at least 6 characters.");
-      setMessageType("error");
-      return;
-    }
+  //   if (password.length < 6) {
+  //     setMessage("Password must contain at least 6 characters.");
+  //     setMessageType("error");
+  //     return;
+  //   }
 
-    if (password !== confirm_password) {
-      setMessage("Password and Confirm Password do not match.");
-      setMessageType("error");
-      return;
+  //   if (password !== confirm_password) {
+  //     setMessage("Password and Confirm Password do not match.");
+  //     setMessageType("error");
+  //     return;
+  //   }
+
+  //   setMessage("Admin Registration Successful!");
+  //   setMessageType("success");
+
+  //   setFormData({
+  //     full_name: "",
+  //     email: "",
+  //     phone_number: "",
+  //     password: "",
+  //     confirm_password: "",
+  //   });
+
+  //   setShowPassword(false);
+  // };
+  const handleSubmit = async (event) => {
+  event.preventDefault();
+
+  const {
+    full_name,
+    email,
+    phone_number,
+    password,
+    confirm_password,
+  } = formData;
+
+  if (
+    !full_name.trim() ||
+    !email.trim() ||
+    !phone_number.trim() ||
+    !password ||
+    !confirm_password
+  ) {
+    setMessage("Please fill in all the fields.");
+    setMessageType("error");
+    return;
+  }
+
+  if (full_name.trim().length < 3) {
+    setMessage("Full name must contain at least 3 characters.");
+    setMessageType("error");
+    return;
+  }
+
+  const phonePattern = /^01[3-9]\d{8}$/;
+
+  if (!phonePattern.test(phone_number)) {
+    setMessage("Enter a valid Bangladeshi phone number.");
+    setMessageType("error");
+    return;
+  }
+
+  if (password.length < 6) {
+    setMessage("Password must contain at least 6 characters.");
+    setMessageType("error");
+    return;
+  }
+
+  if (password !== confirm_password) {
+    setMessage("Password and Confirm Password do not match.");
+    setMessageType("error");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/admin/register",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          full_name,
+          email,
+          phone_number,
+          password,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.message || "Admin registration failed."
+      );
     }
 
     setMessage("Admin Registration Successful!");
@@ -89,7 +176,12 @@ function AdminRegister() {
     });
 
     setShowPassword(false);
-  };
+
+  } catch (error) {
+    setMessage(error.message);
+    setMessageType("error");
+  }
+};
 
   return (
     <main className="admin-register-page">
