@@ -62,6 +62,15 @@ function AdminDashboard() {
 
     loadEverything();
   }, []);
+  useEffect(() => {
+  document.body.style.overflow = "auto";
+  document.body.style.pointerEvents = "auto";
+
+  return () => {
+    document.body.style.overflow = "auto";
+    document.body.style.pointerEvents = "auto";
+  };
+}, []);
 
   const loadEverything = async () => {
     await Promise.all([
@@ -304,15 +313,15 @@ function AdminDashboard() {
     action
   ) => {
     try {
-      const confirmed = window.confirm(
-        action === "suspend"
-          ? "Are you sure you want to suspend this user for 5 days?"
-          : "Are you sure you want to dismiss this complaint?"
-      );
+      // const confirmed = window.confirm(
+      //   action === "suspend"
+      //     ? "Are you sure you want to suspend this user for 5 days?"
+      //     : "Are you sure you want to dismiss this complaint?"
+      // );
 
-      if (!confirmed) {
-        return;
-      }
+      // if (!confirmed) {
+      //   return;
+      // }
 
       const response = await fetch(
         `${API}/complaints/${complaintId}/${action}`,
@@ -537,7 +546,11 @@ function AdminDashboard() {
 
   const logout = () => {
     localStorage.removeItem("admin");
-    navigate("/login");
+   // navigate("/login");
+     document.body.style.overflow = "auto";
+  document.body.style.pointerEvents = "auto";
+
+  window.location.replace("/login");
   };
 
 

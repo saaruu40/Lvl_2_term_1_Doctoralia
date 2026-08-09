@@ -349,12 +349,26 @@ function PatientDashboard() {
 
         setMessage(data.message);
 
+        // if (response.status === 403) {
+
+        //   navigate("/suspended");
+
+        //   return;
+        // }
         if (response.status === 403) {
+  localStorage.removeItem("patient");
 
-          navigate("/suspended");
+  alert(
+    data.message ||
+      "Your account is temporarily suspended."
+  );
 
-          return;
-        }
+  navigate("/patient-login", {
+    replace: true,
+  });
+
+  return;
+}
 
         if (response.ok) {
 

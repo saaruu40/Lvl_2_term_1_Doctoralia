@@ -19,7 +19,7 @@ const {
   getStaffHistory,
 
   getComplaints,
-  createComplaint,
+ // createComplaint,
   suspendFromComplaint,
   dismissComplaint,
 
@@ -68,10 +68,10 @@ router.get(
   "/complaints",
   getComplaints
 );
-router.post(
-  "/complaints",
-  createComplaint
-);
+// router.post(
+//   "/complaints",
+//   createComplaint
+// );
 
 router.patch(
   "/complaints/:id/suspend",

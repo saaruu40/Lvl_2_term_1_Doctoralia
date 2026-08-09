@@ -185,6 +185,15 @@ function App() {
           path="/patient-dashboard"
           element={<PatientDashboard />}
         />
+    <Route
+  path="*"
+  element={
+    <Navigate
+      to="/register"
+      replace
+    />
+  }
+/>
 
       </Routes>
     </>

@@ -50,7 +50,7 @@ const StaffLogin = () => {
       setMessageType("success");
       setMessage("Login successful.");
 
-      navigate("/staff-dashboard");
+     // navigate("/staff-dashboard");
     } catch (error) {
       setMessageType("error");
       setMessage(error.message);

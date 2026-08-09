@@ -1,4 +1,5 @@
-* {
+
+ * {
   box-sizing: border-box;
 }
 
@@ -13,52 +14,99 @@ body {
   font-family: Arial, sans-serif;
 }
 
+/* ==============================
+   PATIENT SIDEBAR
+================================ */
+
 .patient-sidebar {
-  width: 240px;
+  width: 250px;
   min-height: 100vh;
-  background: #ffffff;
-  border-right: 1px solid #ddd;
-  padding: 25px 18px;
+
   position: fixed;
   left: 0;
   top: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  padding: 28px 18px;
+
+  background: linear-gradient(
+    180deg,
+    #075f68,
+    #064a53
+  );
+
+  color: white;
 }
 
 .patient-sidebar h2 {
   margin: 0;
+  padding: 0 10px;
+
+  color: white;
+
   font-size: 26px;
+  font-weight: 800;
 }
 
 .patient-panel-title {
-  color: #777;
-  margin-bottom: 30px;
+  margin-top: 5px;
+  margin-bottom: 38px;
+
+  padding: 0 10px;
+
+  color: #b7e6e7;
+
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .patient-sidebar button {
+  position: relative;
+
   width: 100%;
-  display: block;
-  padding: 12px 15px;
-  margin-bottom: 10px;
+
+  margin-bottom: 8px;
+  padding: 13px 14px;
+
   border: none;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
+  border-radius: 9px;
+
   text-align: left;
+
+  color: #e7f8f8;
+  background: transparent;
+
   font-size: 15px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s;
 }
 
 .patient-sidebar button:hover {
-  background: #edf2ff;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .patient-sidebar .logout-button {
-  margin-top: 30px;
-  color: #d32f2f;
+  margin-top: auto;
+
+  color: #fee2e2;
+
+  background: rgba(220, 38, 38, 0.15);
 }
 
+/* ==============================
+   PATIENT MAIN
+================================ */
+
 .patient-main {
-  width: calc(100% - 240px);
-  margin-left: 240px;
+  width: calc(100% - 250px);
+
+  margin-left: 250px;
+
   padding: 35px;
 }
 
@@ -188,40 +236,59 @@ body {
 .doctor-modal {
   position: fixed;
   inset: 0;
+
   background:
     rgba(0, 0, 0, 0.45);
+
   display: flex;
   justify-content: center;
   align-items: center;
+
   z-index: 999;
 }
 
 .doctor-modal-content {
   width: 90%;
   max-width: 520px;
+
   background: white;
+
   border-radius: 14px;
+
   padding: 30px;
+
   position: relative;
 }
 
 .doctor-modal-content .close-button {
   position: absolute;
+
   right: 15px;
   top: 10px;
+
   background: transparent;
   color: #333;
+
   font-size: 25px;
 }
 
-@media (max-width: 768px) {
+/* ==============================
+   RESPONSIVE
+================================ */
+
+@media screen and (max-width: 760px) {
+
   .patient-sidebar {
     width: 190px;
+
+    padding: 24px 10px;
   }
 
   .patient-main {
-    margin-left: 190px;
     width: calc(100% - 190px);
+
+    margin-left: 190px;
+
     padding: 20px;
   }
 

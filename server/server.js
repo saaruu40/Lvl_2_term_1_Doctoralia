@@ -9,6 +9,7 @@ const staffRoutes = require("./routes/staffRoutes");
 const patientRoutes = require("./routes/patientRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const departmentRoutes = require("./routes/departmentRoutes");
+const complaintRoutes = require("./routes/complaintRoutes");
 
 
 const app = express();
@@ -34,10 +35,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/departments", departmentRoutes);
-app.use(
-  "/api/patients",
-  patientRoutes
-);
+app.use("/api/complaints", complaintRoutes);
 
 app.get("/", (req, res) => {
   res.json({

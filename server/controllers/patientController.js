@@ -91,62 +91,7 @@ const registerPatient = async (req, res) => {
   }
 };
 
-// const loginPatient = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
 
-//     if (!email || !password) {
-//       return res.status(400).json({
-//         message: "email এবং password আবশ্যক।",
-//       });
-//     }
-
-//     const result = await pool.query(
-//       `SELECT
-//         patient_id,
-//         full_name,
-//         email,
-//         password,
-//         phone_number,
-//         gender,
-//         date_of_birth,
-//         blood_group,
-//         address
-//        FROM patient
-//        WHERE email = $1`,
-//       [email]
-//     );
-
-//     if (result.rows.length === 0) {
-//       return res.status(401).json({
-//         message: "Invalid email or password.",
-//       });
-//     }
-
-//     const patient = result.rows[0];
-//     const isPasswordValid = await bcrypt.compare(password, patient.password);
-
-//     if (!isPasswordValid) {
-//       return res.status(401).json({
-//         message: "Invalid email or password.",
-//       });
-//     }
-
-//     delete patient.password;
-
-//     return res.status(200).json({
-//       message: "Login successful.",
-//       patient,
-//     });
-//   } catch (error) {
-//     console.error("Patient login error:", error);
-
-//     return res.status(500).json({
-//       message: "Patient login করা যায়নি।",
-//       error: error.message,
-//     });
-//   }
-// };
 const loginPatient = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -227,6 +172,7 @@ const loginPatient = async (req, res) => {
           patient.suspended_until,
       });
     }
+  
 
     delete patient.password;
 

@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/DoctorAuth.css";
@@ -21,10 +22,13 @@ const PatientLogin = () => {
       ...previousData,
       [name]: value,
     }));
+
+    setMessage("");
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
     setMessage("");
 
     try {
@@ -34,10 +38,13 @@ const PatientLogin = () => {
         "http://localhost:5000/api/patients/login",
         {
           method: "POST",
+
           headers: {
             "Content-Type": "application/json",
           },
+
           credentials: "include",
+
           body: JSON.stringify(formData),
         }
       );
@@ -59,87 +66,114 @@ const PatientLogin = () => {
       setMessage("Login successful.");
 
       navigate("/patient-dashboard");
+
     } catch (error) {
+
       setMessageType("error");
       setMessage(error.message);
+
     } finally {
+
       setLoading(false);
+
     }
   };
 
   return (
     <div className="doctor-auth-page">
-      <div className="doctor-auth-container">
-        <div className="doctor-auth-card">
+
+      <div className="doctor-login-card">
+
+        <div className="doctor-auth-header">
 
           <h1>Patient Login</h1>
 
-          <p className="doctor-auth-subtitle">
+          <p>
             Login to your patient account
           </p>
 
-          {message && (
-            <div
-              className={`doctor-message ${messageType}`}
-            >
-              {message}
-            </div>
-          )}
-
-          <form
-            onSubmit={handleSubmit}
-            className="doctor-form"
-          >
-            <div className="doctor-form-group">
-              <label htmlFor="email">
-                Email Address
-              </label>
-
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="Enter email address"
-                required
-              />
-            </div>
-
-            <div className="doctor-form-group">
-              <label htmlFor="password">
-                Password
-              </label>
-
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Enter password"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="doctor-submit-button"
-              disabled={loading}
-            >
-              {loading ? "Logging in..." : "Login"}
-            </button>
-          </form>
-
-          <p className="doctor-auth-footer">
-            New Patient?{" "}
-            <Link to="/patient-registration">
-              Sign Up
-            </Link>
-          </p>
-
         </div>
+
+
+        {message && (
+          <div
+            className={`doctor-message ${messageType}`}
+          >
+            {message}
+          </div>
+        )}
+
+
+        <form
+          onSubmit={handleSubmit}
+          className="doctor-form"
+        >
+
+          <div className="doctor-form-group">
+
+            <label htmlFor="email">
+              Email Address
+            </label>
+
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Enter email address"
+              required
+            />
+
+          </div>
+
+
+          <div className="doctor-form-group">
+
+            <label htmlFor="password">
+              Password
+            </label>
+
+            <input
+              type="password"
+              id="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter password"
+              required
+            />
+
+          </div>
+
+
+          <button
+            type="submit"
+            className="doctor-submit-button"
+            disabled={loading}
+          >
+
+            {loading
+              ? "Logging in..."
+              : "Login"}
+
+          </button>
+
+        </form>
+
+
+        <p className="doctor-auth-footer">
+
+          New Patient?{" "}
+
+          <Link to="/patient-registration">
+            Sign Up
+          </Link>
+
+        </p>
+
       </div>
+
     </div>
   );
 };
