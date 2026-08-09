@@ -131,8 +131,74 @@ if (staff.approval_status === "rejected") {
     });
   }
 };
+const scheduleAppointment = async (req, res) => {
+  try {
+    const appointmentId = req.params.id;
 
+    const {
+      hospital_id,
+      schedule_id,
+    } = req.body;
+
+    if (!hospital_id || !schedule_id) {
+      return res.status(400).json({
+        message:
+          "Hospital ID and Schedule ID are required.",
+      });
+    }
+
+    const appointmentCheck =
+      await pool.query(
+        `SELECT appointment_id, appointment_status
+         FROM appointment
+         WHERE appointment_id = $1`,
+        [appointmentId]
+      );
+
+    if (
+      appointmentCheck.rows.length === 0
+    ) {
+      return res.status(404).json({
+        message: "Appointment not found.",
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE appointment
+       SET
+         hospital_id = $1,
+         schedule_id = $2,
+         appointment_status = 'scheduled'
+       WHERE appointment_id = $3
+       RETURNING *`,
+      [
+        hospital_id,
+        schedule_id,
+        appointmentId,
+      ]
+    );
+
+    return res.status(200).json({
+      message:
+        "Appointment scheduled successfully.",
+      appointment: result.rows[0],
+    });
+
+  } catch (error) {
+    console.error(
+      "Schedule appointment error:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Could not schedule appointment.",
+      error: error.message,
+    });
+  }
+};
 module.exports = {
   applyStaff,
   loginStaff,
+    scheduleAppointment,
 };

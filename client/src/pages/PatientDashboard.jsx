@@ -436,67 +436,114 @@ function PatientDashboard() {
   // PAYMENT
   // ======================================
 
-  const makePayment =
-    async (appointmentId) => {
+  // const makePayment =
+  //   async (appointmentId) => {
 
-      const method =
-        window.prompt(
-          "Payment method: card / cash / mobile_banking"
-        );
+  //     const method =
+  //       window.prompt(
+  //         "Payment method: card / cash / mobile_banking"
+  //       );
 
-      if (!method) {
-        return;
+  //     if (!method) {
+  //       return;
+  //     }
+
+  //     try {
+
+  //       const response =
+  //         await fetch(
+  //           `${API}/payments`,
+  //           {
+  //             method: "POST",
+
+  //             headers: {
+  //               "Content-Type":
+  //                 "application/json",
+  //             },
+
+  //             body: JSON.stringify({
+  //               patient_id:
+  //                 patient.patient_id,
+
+  //               appointment_id:
+  //                 appointmentId,
+
+  //               payment_method:
+  //                 method,
+  //             }),
+  //           }
+  //         );
+
+  //       const data =
+  //         await response.json();
+
+  //       if (response.ok) {
+
+  //         setMessage(
+  //           `${data.message} Fee: ${data.fee_type}, Amount: ৳${data.amount}`
+  //         );
+
+  //         loadAppointments();
+
+  //       } else {
+
+  //         setMessage(data.message);
+  //       }
+
+  //     } catch (error) {
+
+  //       setMessage(
+  //         "Payment failed."
+  //       );
+  //     }
+  //   };
+  const makePayment = async (appointmentId) => {
+  try {
+    setMessage("Processing payment...");
+
+    const response = await fetch(
+      `${API}/payments`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          patient_id: patient.patient_id,
+          appointment_id: appointmentId,
+          payment_method: "cash",
+        }),
       }
+    );
 
-      try {
+    const data = await response.json();
 
-        const response =
-          await fetch(
-            `${API}/payments`,
-            {
-              method: "POST",
+    if (!response.ok) {
+      setMessage(
+        data.message || "Payment failed."
+      );
+      return;
+    }
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
+    setMessage(
+      `${data.message} Fee: ${data.fee_type}, Amount: ৳${data.amount}`
+    );
 
-              body: JSON.stringify({
-                patient_id:
-                  patient.patient_id,
+    await loadAppointments();
 
-                appointment_id:
-                  appointmentId,
+  } catch (error) {
+    console.error(
+      "Payment error:",
+      error
+    );
 
-                payment_method:
-                  method,
-              }),
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (response.ok) {
-
-          setMessage(
-            `${data.message} Fee: ${data.fee_type}, Amount: ৳${data.amount}`
-          );
-
-          loadAppointments();
-
-        } else {
-
-          setMessage(data.message);
-        }
-
-      } catch (error) {
-
-        setMessage(
-          "Payment failed."
-        );
-      }
-    };
+    setMessage(
+      "Payment failed. Please try again."
+    );
+  }
+};
 
 
   // ======================================

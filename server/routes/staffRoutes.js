@@ -6,6 +6,7 @@ const fs = require("fs");
 const {
   applyStaff,
   loginStaff,
+    scheduleAppointment,
 } = require("../controllers/staffController");
 
 const router = express.Router();
@@ -55,5 +56,9 @@ const upload = multer({
 
 router.post("/apply", upload.single("profile_pic"), applyStaff);
 router.post("/login", loginStaff);
+router.patch(
+  "/appointments/:id/schedule",
+  scheduleAppointment
+);
 
 module.exports = router;
