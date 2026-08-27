@@ -13,7 +13,12 @@ CREATE TABLE IF NOT EXISTS admin (
 CREATE TABLE IF NOT EXISTS department (
     department_id SERIAL PRIMARY KEY,
     department_name VARCHAR(100),
-    description TEXT
+    description TEXT,
+    created_by INTEGER,
+
+    CONSTRAINT fk_department_created_by
+        FOREIGN KEY (created_by)
+        REFERENCES admin(admin_id)
 );
 
 CREATE TABLE IF NOT EXISTS patient (
@@ -98,16 +103,50 @@ CREATE TABLE IF NOT EXISTS doctor (
 
 CREATE TABLE IF NOT EXISTS schedule (
     schedule_id SERIAL PRIMARY KEY,
-    doctor_id INTEGER,
     available_date DATE,
     start_time TIME,
     end_time TIME,
-    slot_status VARCHAR(50),
+    hospital_id INTEGER,
 
-    CONSTRAINT fk_schedule_doctor
-        FOREIGN KEY (doctor_id)
-        REFERENCES doctor(doctor_id)
+    CONSTRAINT fk_schedule_hospital
+        FOREIGN KEY (hospital_id)
+        REFERENCES hospital(hospital_id)
 );
+
+CREATE TABLE IF NOT EXISTS doctor_schedule (
+    doctor_id INTEGER NOT NULL,
+    schedule_id INTEGER NOT NULL,
+    status VARCHAR(20) CHECK (status IN ('AVAILABLE','WORKING','UNAVAILABLE')),
+
+    PRIMARY KEY (doctor_id, schedule_id),
+
+    CONSTRAINT fk_doctor_schedule_doctor
+        FOREIGN KEY (doctor_id)
+        REFERENCES doctor(doctor_id) ON DELETE CASCADE,
+
+    CONSTRAINT fk_doctor_schedule_schedule
+        FOREIGN KEY (schedule_id)
+        REFERENCES schedule(schedule_id) ON DELETE CASCADE
+);
+
+-- Migration for existing DBs that still have old columns (safe, no-op if already migrated)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='doctor_id') THEN
+    -- move existing data to junction before dropping
+    INSERT INTO doctor_schedule (doctor_id, schedule_id, status)
+    SELECT doctor_id, schedule_id, COALESCE(NULLIF(slot_status,''),'UNAVAILABLE')
+    FROM schedule WHERE doctor_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+    ALTER TABLE schedule DROP CONSTRAINT IF EXISTS fk_schedule_doctor;
+    ALTER TABLE schedule DROP COLUMN IF EXISTS doctor_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='slot_status') THEN
+    ALTER TABLE schedule DROP COLUMN IF EXISTS slot_status;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='hospital_id') THEN
+    ALTER TABLE schedule ADD COLUMN hospital_id INTEGER REFERENCES hospital(hospital_id);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS appointment (
     appointment_id SERIAL PRIMARY KEY,

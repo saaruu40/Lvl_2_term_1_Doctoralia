@@ -7,6 +7,15 @@ const {
   applyDoctor,
   loginDoctor,
 } = require("../controllers/doctorController");
+const doctorAuth = require("../middleware/doctorAuth");
+const {
+  createSchedule,
+  getMySchedules,
+  getMyScheduleById,
+  updateMySchedule,
+  deleteMySchedule,
+  getHospitals,
+} = require("../controllers/scheduleController");
 
 const router = express.Router();
 
@@ -53,4 +62,15 @@ router.post(
   applyDoctor
 );
 router.post("/login", loginDoctor);
+
+// Hospitals (for schedule creation)
+router.get("/hospitals", getHospitals);
+
+// Schedule — protected (doctorAuth checks x-doctor-id)
+router.post("/schedules", doctorAuth, createSchedule);
+router.get("/schedules", doctorAuth, getMySchedules);
+router.get("/schedules/:id", doctorAuth, getMyScheduleById);
+router.put("/schedules/:id", doctorAuth, updateMySchedule);
+router.delete("/schedules/:id", doctorAuth, deleteMySchedule);
+
 module.exports = router;

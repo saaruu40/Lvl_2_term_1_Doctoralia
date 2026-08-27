@@ -149,7 +149,7 @@ const scheduleAppointment = async (req, res) => {
 
     const appointmentCheck =
       await pool.query(
-        `SELECT appointment_id, appointment_status
+        `SELECT appointment_id, appointment_status, doctor_id
          FROM appointment
          WHERE appointment_id = $1`,
         [appointmentId]
@@ -161,6 +161,19 @@ const scheduleAppointment = async (req, res) => {
       return res.status(404).json({
         message: "Appointment not found.",
       });
+    }
+
+    const scheduleCheck = await pool.query(
+      `SELECT s.schedule_id, s.hospital_id, ds.doctor_id
+       FROM schedule s JOIN doctor_schedule ds ON ds.schedule_id=s.schedule_id
+       WHERE s.schedule_id=$1 AND s.hospital_id=$2`,
+      [schedule_id, hospital_id]
+    );
+    if (scheduleCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Schedule not found for this hospital." });
+    }
+    if (Number(scheduleCheck.rows[0].doctor_id) !== Number(appointmentCheck.rows[0].doctor_id)) {
+      return res.status(400).json({ message: "Schedule does not belong to the doctor of this appointment." });
     }
 
     const result = await pool.query(

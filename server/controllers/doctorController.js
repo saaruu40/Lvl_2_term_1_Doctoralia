@@ -98,7 +98,7 @@ const loginDoctor = async (req, res) => {
     const { email, password } = req.body;
 
     const result = await pool.query(
-      `SELECT doctor_id, full_name, email, password, approved_by,approval_status
+      `SELECT doctor_id, full_name, email, password, approved_by, approval_status, suspended_until
        FROM doctor
        WHERE email = $1`,
       [email]
@@ -123,16 +123,35 @@ const loginDoctor = async (req, res) => {
       });
     }
 
-    if (doctor.approval_status === pending) {
+    if (doctor.approval_status === "pending") {
       return res.status(403).json({
         message: "Your account is waiting for admin approval.",
       });
     }
-if (doctor.approval_status === "rejected") {
-  return res.status(403).json({
-    message: "Your doctor application was rejected.",
-  });
-}
+    if (doctor.approval_status === "rejected") {
+      return res.status(403).json({
+        message: "Your doctor application was rejected.",
+      });
+    }
+    if (
+      doctor.suspended_until &&
+      new Date(doctor.suspended_until) > new Date()
+    ) {
+      return res.status(403).json({
+        message: "Your account is temporarily suspended.",
+        suspended_until: doctor.suspended_until,
+      });
+    }
+    if (
+      doctor.suspended_until &&
+      new Date(doctor.suspended_until) <= new Date()
+    ) {
+      await pool.query(
+        `UPDATE doctor SET suspended_until = NULL WHERE doctor_id = $1`,
+        [doctor.doctor_id]
+      );
+      doctor.suspended_until = null;
+    }
     return res.status(200).json({
       message: "Doctor login successful.",
       doctor: {

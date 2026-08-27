@@ -1,0 +1,26 @@
+Doctoralia ERD Guide — Updated for Doctor Schedule M:N
+See ERD_modify.txt for complete change list.
+
+Entities:
+
+- admin(admin_id PK)
+- department(department_id PK, created_by FK->admin)
+- hospital(hospital_id PK, hospital_name, city, address, phone, description)
+- doctor(doctor_id PK, department_id FK, approved_by FK, full_name, email, password, qualification, specification, etc., approval_status, suspended_until)
+- schedule(schedule_id PK, available_date DATE, start_time TIME, end_time TIME, hospital_id FK->hospital)
+- doctor_schedule(doctor_id PK,FK -> doctor, schedule_id PK,FK -> schedule, status CHECK('AVAILABLE','WORKING','UNAVAILABLE'))
+- patient(patient_id PK, ...)
+- appointment(appointment_id PK, patient_id FK, doctor_id FK, hospital_id FK, schedule_id FK, appointment_status, booking_date)
+- etc. (medicine, test, prescription, payment, complaint, referral unchanged)
+
+Relationships:
+
+- Hospital 1:N Schedule (schedule.hospital_id)
+- Doctor M:N Schedule via doctor_schedule (PK doctor_id+schedule_id)
+- Doctor N:1 Department
+- Patient 1:N Appointment, Doctor 1:N Appointment
+- Follow the M:N junction pattern for doctor_schedule.
+
+Timezone: Asia/Dhaka (server/utils/time.js) for window & status — fixing window 15:00–18:00 same-date, success "Schedule fixed successfully.", fail "Schedule fixing time is over."
+
+Instructions: Import database/schema.sql then open ERD tool, add doctor_schedule junction, link as above, remove old schedule.doctor_id edge.

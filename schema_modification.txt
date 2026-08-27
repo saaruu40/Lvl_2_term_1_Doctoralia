@@ -1,0 +1,39 @@
+Doctoralia — schema_modification.txt
+Date: 2026-08-27
+Feature: Doctor Side Schedule Management & Doctor Availability (M:N, Fixing Window, Hospital link)
+
+1. Schedule table
+   BEFORE:
+     schedule(schedule_id PK, doctor_id FK -> doctor, available_date DATE, start_time TIME, end_time TIME, slot_status VARCHAR(50))
+   AFTER:
+     schedule(schedule_id PK, available_date DATE, start_time TIME, end_time TIME, hospital_id FK -> hospital)
+   Reason:
+     - doctor_id removed: Doctor <-> Schedule is now MANY-TO-MANY via doctor_schedule; keeping doctor_id would be redundant and prevent one schedule being shared by many doctors.
+     - slot_status removed: availability belongs to the relationship (doctor+schedule) not to schedule itself. Moved to doctor_schedule.status.
+     - hospital_id added: Each schedule must specify hospital where doctor will be available. Hospital 1:N Schedule (one hospital has many schedules). Appointment already had hospital_id but schedule now directly owns it for availability display.
+
+2. Doctor_Schedule junction table (NEW)
+   doctor_schedule(doctor_id FK -> doctor ON DELETE CASCADE, schedule_id FK -> schedule ON DELETE CASCADE, status VARCHAR(20) CHECK IN ('AVAILABLE','WORKING','UNAVAILABLE'), PRIMARY KEY (doctor_id, schedule_id))
+   Reason:
+     - Implements Doctor M:N Schedule. One doctor can have many schedules, one schedule can be reused by many doctors (same date/time/hospital block).
+     - status stored here because AVAILABLE/WORKING/UNAVAILABLE is per-doctor per-schedule, not per schedule alone. Computed from start_time/end_time/current Dhaka time but persisted for quick join and history.
+     - Only three statuses allowed; appointment_status remains separate (pending/scheduled/confirmed).
+
+3. Hospital table
+   UNCHANGED: hospital(hospital_id PK, hospital_name, city, address, phone_number, description)
+   Reason: Already meets spec. Only referenced by schedule.hospital_id now.
+
+4. Migration logic (DO block in database/schema.sql)
+   - If schedule.doctor_id exists: copy rows into doctor_schedule (status = COALESCE(slot_status,'UNAVAILABLE')) ON CONFLICT DO NOTHING, then drop FK and column.
+   - If slot_status exists: drop column.
+   - If hospital_id missing: add column with FK.
+   Reason: Safe for existing dev DB with data; no data loss for already-fixed schedules. New installs create correct schema directly.
+
+5. Related indexes/constraints
+   - appointment.schedule_id FK remains -> schedule (now hospital-linked). staff assignment validates schedule.hospital_id matches appointment.hospital_id and schedule belongs to appointment.doctor_id via doctor_schedule.
+   - Ordering for discovery uses doctor.full_name ASC (alphabetical).
+
+What to do:
+- Run database/schema.sql on fresh DB, or if DB already exists run the DO block manually or re-run schema.sql (IF NOT EXISTS guards + migration).
+- For production: backup, run `psql -f database/schema.sql`, verify `SELECT * FROM doctor_schedule LIMIT 1;` and `SELECT column_name FROM information_schema.columns WHERE table_name='schedule';` shows hospital_id not doctor_id/slot_status.
+- Insert hospitals beforehand (seed.sql already has one). Doctors fix schedules only during that date's **15:00–18:00** (Asia/Dhaka) window via API (same calendar date as `available_date`). After 18:00 the API returns: `Schedule fixing time is over.`

@@ -1,7 +1,6 @@
 const express = require("express");
 
 const {
-  registerAdmin,
   loginAdmin,
 
   getAdminProfile,
@@ -32,8 +31,7 @@ const {
 const router = express.Router();
 
 
-// Authentication
-router.post("/register", registerAdmin);
+// Authentication (single admin login only — staff uses /api/staff/login)
 router.post("/login", loginAdmin);
 
 

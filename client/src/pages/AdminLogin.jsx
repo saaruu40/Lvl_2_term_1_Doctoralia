@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link,useNavigate } from "react-router-dom";
 import "../styles/AdminLogin.css";
 
 function AdminLogin() {
@@ -24,71 +23,51 @@ function AdminLogin() {
     setMessageType("");
   };
 
-  // const handleSubmit = (event) => {
-  //   event.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
-  //   if (!formData.email.trim() || !formData.password) {
-  //     setMessage("Please enter your email and password.");
-  //     setMessageType("error");
-  //     return;
-  //   }
+    const email = formData.email.trim().toLowerCase();
+    const password = formData.password;
 
-  //   setMessage("Admin Login Successful!");
-  //   setMessageType("success");
-
-  //   setFormData({
-  //     email: "",
-  //     password: "",
-  //   });
-
-  //   setShowPassword(false);
-  // };
-  const navigate = useNavigate();
-
-const handleSubmit = async (event) => {
-  event.preventDefault();
-
-  if (!formData.email.trim() || !formData.password) {
-    setMessage("Please enter your email and password.");
-    setMessageType("error");
-    return;
-  }
-
-  try {
-    const response = await fetch(
-      "http://localhost:5000/api/admin/login",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        result.message || "Admin login failed."
-      );
+    if (!email || !password) {
+      setMessage("Please enter your email and password.");
+      setMessageType("error");
+      return;
     }
 
-    localStorage.setItem(
-      "admin",
-      JSON.stringify(result.admin)
-    );
+    try {
+      // Clear any previous admin session before saving the new one
+      localStorage.removeItem("admin");
 
-    setMessageType("success");
-    setMessage("Admin Login Successful!");
+      const response = await fetch(
+        "http://localhost:5000/api/admin/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        }
+      );
 
-    navigate("/admin-dashboard");
+      const result = await response.json();
 
-  } catch (error) {
-    setMessageType("error");
-    setMessage(error.message);
-  }
-};
+      if (!response.ok) {
+        throw new Error(result.message || "Admin login failed.");
+      }
+
+      localStorage.setItem("admin", JSON.stringify(result.admin));
+
+      setMessageType("success");
+      setMessage("Admin Login Successful!");
+
+      // Force a full navigation so dashboard always loads the new admin
+      window.location.replace("/admin-dashboard");
+    } catch (error) {
+      setMessageType("error");
+      setMessage(error.message);
+    }
+  };
 
   return (
     <main className="admin-login-page">
@@ -149,13 +128,6 @@ const handleSubmit = async (event) => {
             Login
           </button>
         </form>
-
-        <p className="register-text">
-          Don&apos;t have an account?{" "}
-          <Link to="/register" className="register-link">
-            Register
-          </Link>
-        </p>
       </section>
     </main>
   );

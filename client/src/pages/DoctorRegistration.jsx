@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/DoctorAuth.css";
 
@@ -24,14 +24,34 @@ const DoctorRegistration = () => {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [loadingDepartments, setLoadingDepartments] = useState(true);
 
-  const departments = [
-    { department_id: 1, department_name: "Cardiology" },
-    { department_id: 2, department_name: "Neurology" },
-    { department_id: 3, department_name: "Dermatology" },
-    { department_id: 4, department_name: "Orthopedics" },
-    { department_id: 5, department_name: "Medicine" },
-  ];
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        const response = await fetch(
+          "http://localhost:5000/api/departments"
+        );
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || "Could not load departments."
+          );
+        }
+
+        setDepartments(data.departments || []);
+      } catch (error) {
+        setMessageType("error");
+        setMessage(error.message);
+      } finally {
+        setLoadingDepartments(false);
+      }
+    };
+
+    loadDepartments();
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -53,6 +73,12 @@ const DoctorRegistration = () => {
     if (formData.password !== formData.confirm_password) {
       setMessageType("error");
       setMessage("Password এবং Confirm Password মিলছে না।");
+      return;
+    }
+
+    if (!formData.department_id) {
+      setMessageType("error");
+      setMessage("Please select a department.");
       return;
     }
 
@@ -166,8 +192,15 @@ const DoctorRegistration = () => {
                 value={formData.department_id}
                 onChange={handleChange}
                 required
+                disabled={loadingDepartments || departments.length === 0}
               >
-                <option value="">Select department</option>
+                <option value="">
+                  {loadingDepartments
+                    ? "Loading departments..."
+                    : departments.length === 0
+                      ? "No departments available"
+                      : "Select department"}
+                </option>
 
                 {departments.map((department) => (
                   <option

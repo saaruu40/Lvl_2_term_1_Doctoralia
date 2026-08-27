@@ -8,9 +8,8 @@ const API = "http://localhost:5000/api/admin";
 function AdminDashboard() {
   const navigate = useNavigate();
 
-  const storedAdmin = JSON.parse(
-    localStorage.getItem("admin")
-  );
+  const [admin, setAdmin] = useState(null);
+  const [loadingAdmin, setLoadingAdmin] = useState(true);
 
   const [section, setSection] = useState("dashboard");
 
@@ -55,30 +54,70 @@ function AdminDashboard() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (!storedAdmin) {
+    const session = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("admin"));
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!session?.admin_id) {
       navigate("/login");
       return;
     }
 
-    loadEverything();
-  }, []);
-  useEffect(() => {
-  document.body.style.overflow = "auto";
-  document.body.style.pointerEvents = "auto";
+    const bootstrap = async () => {
+      const freshAdmin = await loadAdminProfile(session.admin_id);
 
-  return () => {
+      if (!freshAdmin) {
+        localStorage.removeItem("admin");
+        navigate("/login");
+        return;
+      }
+
+      await loadEverything(freshAdmin.admin_id);
+      setLoadingAdmin(false);
+    };
+
+    bootstrap();
+  }, []);
+
+  useEffect(() => {
     document.body.style.overflow = "auto";
     document.body.style.pointerEvents = "auto";
-  };
-}, []);
 
-  const loadEverything = async () => {
+    return () => {
+      document.body.style.overflow = "auto";
+      document.body.style.pointerEvents = "auto";
+    };
+  }, []);
+
+  const loadAdminProfile = async (adminId) => {
+    try {
+      const response = await fetch(`${API}/profile/${adminId}`);
+      const data = await response.json();
+
+      if (!response.ok || !data.admin) {
+        return null;
+      }
+
+      setAdmin(data.admin);
+      localStorage.setItem("admin", JSON.stringify(data.admin));
+      return data.admin;
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
+  };
+
+  const loadEverything = async (adminId) => {
     await Promise.all([
       loadStats(),
       loadPendingDoctors(),
       loadPendingStaff(),
-      loadDoctorHistory(),
-      loadStaffHistory(),
+      loadDoctorHistory(adminId),
+      loadStaffHistory(adminId),
       loadDepartments(),
       loadComplaints(),
     ]);
@@ -140,12 +179,12 @@ function AdminDashboard() {
   };
 
 
-  const loadDoctorHistory = async () => {
-    if (!storedAdmin) return;
+  const loadDoctorHistory = async (adminId) => {
+    if (!adminId) return;
 
     try {
       const response = await fetch(
-        `${API}/history/doctors/${storedAdmin.admin_id}`
+        `${API}/history/doctors/${adminId}`
       );
 
       const data = await response.json();
@@ -159,12 +198,12 @@ function AdminDashboard() {
   };
 
 
-  const loadStaffHistory = async () => {
-    if (!storedAdmin) return;
+  const loadStaffHistory = async (adminId) => {
+    if (!adminId) return;
 
     try {
       const response = await fetch(
-        `${API}/history/staff/${storedAdmin.admin_id}`
+        `${API}/history/staff/${adminId}`
       );
 
       const data = await response.json();
@@ -241,7 +280,7 @@ function AdminDashboard() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
+            admin_id: admin.admin_id,
           }),
         }
       );
@@ -255,7 +294,7 @@ function AdminDashboard() {
       setMessage(data.message);
 
       await loadPendingDoctors();
-      await loadDoctorHistory();
+      await loadDoctorHistory(admin.admin_id);
       await loadStats();
 
     } catch (error) {
@@ -281,7 +320,7 @@ function AdminDashboard() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
+            admin_id: admin.admin_id,
           }),
         }
       );
@@ -295,7 +334,7 @@ function AdminDashboard() {
       setMessage(data.message);
 
       await loadPendingStaff();
-      await loadStaffHistory();
+      await loadStaffHistory(admin.admin_id);
       await loadStats();
 
     } catch (error) {
@@ -333,7 +372,7 @@ function AdminDashboard() {
           },
 
           body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
+            admin_id: admin.admin_id,
           }),
         }
       );
@@ -464,7 +503,10 @@ function AdminDashboard() {
           "Content-Type": "application/json",
         },
 
-        body: JSON.stringify(departmentForm),
+        body: JSON.stringify({
+          ...departmentForm,
+          admin_id: admin.admin_id,
+        }),
       });
 
       const data = await response.json();
@@ -492,6 +534,11 @@ function AdminDashboard() {
 
 
   const editDepartment = (department) => {
+    if (department.created_by !== admin.admin_id) {
+      setMessage("You can only edit departments you created.");
+      return;
+    }
+
     setEditingDepartment(
       department.department_id
     );
@@ -520,6 +567,12 @@ function AdminDashboard() {
         `${API}/departments/${departmentId}`,
         {
           method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            admin_id: admin.admin_id,
+          }),
         }
       );
 
@@ -554,9 +607,72 @@ function AdminDashboard() {
   };
 
 
-  if (!storedAdmin) {
+  if (loadingAdmin || !admin) {
     return null;
   }
+
+  const myDepartments = departments.filter(
+    (department) => department.created_by === admin.admin_id
+  );
+
+  const otherDepartments = departments.filter(
+    (department) => department.created_by !== admin.admin_id
+  );
+
+  const renderDepartmentList = (list, showActions) => {
+    if (list.length === 0) {
+      return (
+        <p className="empty-text">
+          No departments found.
+        </p>
+      );
+    }
+
+    return (
+      <div className="department-list">
+        {list.map((department) => (
+          <div
+            className="department-item"
+            key={department.department_id}
+          >
+            <div>
+              <h3>{department.department_name}</h3>
+              <p>
+                {department.description || "No description"}
+              </p>
+              <p>
+                <strong>Created by:</strong>{" "}
+                {department.created_by_name ||
+                  (department.created_by
+                    ? `Admin #${department.created_by}`
+                    : "Unknown")}
+              </p>
+            </div>
+
+            {showActions && (
+              <div className="department-actions">
+                <button
+                  className="edit-button"
+                  onClick={() => editDepartment(department)}
+                >
+                  Edit
+                </button>
+
+                <button
+                  className="reject-button"
+                  onClick={() =>
+                    deleteDepartment(department.department_id)
+                  }
+                >
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
 
   return (
@@ -688,7 +804,7 @@ function AdminDashboard() {
             <h1>Admin Dashboard</h1>
 
             <p>
-              Welcome, {storedAdmin.full_name}
+              Welcome, {admin.full_name}
             </p>
           </div>
 
@@ -1209,66 +1325,15 @@ function AdminDashboard() {
 
             </form>
 
+            <h3 style={{ marginTop: "28px" }}>
+              My Departments
+            </h3>
+            {renderDepartmentList(myDepartments, true)}
 
-            <div className="department-list">
-
-              {departments.map(
-                (department) => (
-
-                  <div
-                    className="department-item"
-                    key={
-                      department.department_id
-                    }
-                  >
-
-                    <div>
-
-                      <h3>
-                        {
-                          department.department_name
-                        }
-                      </h3>
-
-                      <p>
-                        {department.description ||
-                          "No description"}
-                      </p>
-
-                    </div>
-
-                    <div className="department-actions">
-
-                      <button
-                        className="edit-button"
-                        onClick={() =>
-                          editDepartment(
-                            department
-                          )
-                        }
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="reject-button"
-                        onClick={() =>
-                          deleteDepartment(
-                            department.department_id
-                          )
-                        }
-                      >
-                        Delete
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                )
-              )}
-
-            </div>
+            <h3 style={{ marginTop: "28px" }}>
+              Other Admins&apos; Departments
+            </h3>
+            {renderDepartmentList(otherDepartments, false)}
 
           </section>
         )}
@@ -1500,14 +1565,14 @@ function AdminDashboard() {
 
             <div className="profile-avatar">
 
-              {storedAdmin.full_name
+              {admin.full_name
                 ?.charAt(0)
                 .toUpperCase()}
 
             </div>
 
             <h2>
-              {storedAdmin.full_name}
+              {admin.full_name}
             </h2>
 
             <div className="profile-details">
@@ -1516,7 +1581,7 @@ function AdminDashboard() {
                 <strong>Admin ID</strong>
 
                 <span>
-                  {storedAdmin.admin_id}
+                  {admin.admin_id}
                 </span>
               </p>
 
@@ -1524,7 +1589,7 @@ function AdminDashboard() {
                 <strong>Email</strong>
 
                 <span>
-                  {storedAdmin.email}
+                  {admin.email}
                 </span>
               </p>
 
@@ -1532,7 +1597,7 @@ function AdminDashboard() {
                 <strong>Phone</strong>
 
                 <span>
-                  {storedAdmin.phone_number}
+                  {admin.phone_number}
                 </span>
               </p>
 

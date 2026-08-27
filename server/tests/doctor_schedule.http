@@ -1,0 +1,229 @@
+### Doctoralia — Doctor Schedule & Availability API Tester
+### Base: http://localhost:5000
+### Use placeholders YOUR_DOCTOR_ID, YOUR_TOKEN, YOUR_HOSPITAL_ID, YOUR_SCHEDULE_ID
+### Fixing window: 15:00 inclusive to 18:00 exclusive Asia/Dhaka, same-date only
+
+### 1. Get hospitals for schedule creation (dynamic from hospital table)
+GET http://localhost:5000/api/doctors/hospitals
+
+### 2. Successful schedule creation during 15:00–18:00 (Dhaka) — must be today's date during window
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "15:00",
+  "end_time": "17:00",
+  "hospital_id": 1
+}
+### Expect: 201 { "message": "Schedule fixed successfully.", "schedule": { ... } }
+### If after 18:00: 403 { "message": "Schedule fixing time is over." }
+
+### 2b. Multiple schedules — second schedule same doctor different time (non-overlapping) — allows N schedules
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "09:00",
+  "end_time": "11:00",
+  "hospital_id": 2
+}
+### Expect: 201 if inside 15:00-18:00 window today, else 403 Schedule fixing time is over.
+
+### 3. Schedule creation at exactly 14:59 — should FAIL 403 Schedule fixing time is over.
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 4. Schedule creation at exactly 18:00 — should FAIL 403 (exclusive)
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 5. Schedule creation after 18:00 (e.g., 19:00) — FAIL 403 Schedule fixing time is over.
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 6. Correct date: use today's Dhaka date during its 15:00-18:00 window — PASS (201)
+### 7. Attempt to use one day's window for another date — FAIL 403 (available_date must equal today)
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-28",
+  "start_time": "15:00",
+  "end_time": "17:00",
+  "hospital_id": 1
+}
+
+### 8. Missing available_date — 400
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 9. Missing start_time — 400
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 10. Missing end_time — 400
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "hospital_id": 1
+}
+
+### 11. Invalid start/end (start >= end) — 400 start_time must be before end_time.
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "14:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 12. Invalid hospital — 404
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 9999
+}
+
+### 13. Conflicting schedule (same doctor, overlapping time) — 409
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "16:00",
+  "end_time": "17:00",
+  "hospital_id": 1
+}
+
+### 14. Unauthorized — missing x-doctor-id — 401
+POST http://localhost:5000/api/doctors/schedules
+Content-Type: application/json
+{
+  "available_date": "2026-08-27",
+  "start_time": "10:00",
+  "end_time": "13:00",
+  "hospital_id": 1
+}
+
+### 15. Doctor attempting to access another doctor's schedule — 404
+GET http://localhost:5000/api/doctors/schedules/YOUR_SCHEDULE_ID
+x-doctor-id: 9999
+
+### 16. Get own schedules (multiple) — shows all via Schedule List icon
+GET http://localhost:5000/api/doctors/schedules
+x-doctor-id: YOUR_DOCTOR_ID
+
+### 17. Get specific own schedule
+GET http://localhost:5000/api/doctors/schedules/YOUR_SCHEDULE_ID
+x-doctor-id: YOUR_DOCTOR_ID
+
+### 18. Update own schedule (inside 15:00-18:00 window, same date) — 200 Schedule fixed successfully.
+PUT http://localhost:5000/api/doctors/schedules/YOUR_SCHEDULE_ID
+Content-Type: application/json
+x-doctor-id: YOUR_DOCTOR_ID
+{
+  "available_date": "2026-08-27",
+  "start_time": "09:00",
+  "end_time": "12:00",
+  "hospital_id": 1
+}
+
+### 19. Remove own schedule (inside window) — 200
+DELETE http://localhost:5000/api/doctors/schedules/YOUR_SCHEDULE_ID
+x-doctor-id: YOUR_DOCTOR_ID
+
+### 20. Search by doctor name (HomePage search bar — name search)
+GET http://localhost:5000/api/availability/doctors?search=Rahman
+
+### 21. Department filtering (HomePage department search)
+GET http://localhost:5000/api/availability/doctors?department_id=1
+
+### 22. Search + department filtering (combined)
+GET http://localhost:5000/api/availability/doctors?search=Rahman&department_id=1
+
+### 23. Alphabetical sorting check (should be full_name ASC, fetched dynamically)
+GET http://localhost:5000/api/availability/doctors
+
+### 24. AVAILABLE status — book before start_time (set schedule 15:00-17:00, mock now 14:00) — 201
+POST http://localhost:5000/api/patients/appointments
+Content-Type: application/json
+{
+  "patient_id": 1,
+  "doctor_id": 1
+}
+
+### 25. WORKING status — book during schedule (now 16:00) — 403 Cannot book an appointment for today.
+POST http://localhost:5000/api/patients/appointments
+Content-Type: application/json
+{
+  "patient_id": 1,
+  "doctor_id": 1
+}
+
+### 26. UNAVAILABLE status — book after end_time or no schedule — 403 Doctor is unavailable
+POST http://localhost:5000/api/patients/appointments
+Content-Type: application/json
+{
+  "patient_id": 1,
+  "doctor_id": 1
+}
+
+### 27. Booking after today's start time via direct API — should be blocked even without UI
+POST http://localhost:5000/api/patients/appointments
+Content-Type: application/json
+{
+  "patient_id": 1,
+  "doctor_id": 1
+}
+
+### 28. Staff schedule appointment with correct hospital+schedule belonging to doctor — 200
+PATCH http://localhost:5000/api/staff/appointments/1/schedule
+Content-Type: application/json
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}

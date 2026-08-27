@@ -3,79 +3,11 @@ const pool = require("../config/db");
 
 
 // =====================================================
-// ADMIN REGISTRATION
+// ADMIN LOGIN (single fixed admin — no registration)
+// Credentials verified only on backend; never expose in frontend
 // =====================================================
 
-const registerAdmin = async (req, res) => {
-  try {
-    const {
-      full_name,
-      email,
-      password,
-      phone_number,
-    } = req.body;
-
-    if (!full_name || !email || !password || !phone_number) {
-      return res.status(400).json({
-        message: "All fields are required.",
-      });
-    }
-
-    const existingAdmin = await pool.query(
-      `SELECT admin_id
-       FROM admin
-       WHERE email = $1`,
-      [email]
-    );
-
-    if (existingAdmin.rows.length > 0) {
-      return res.status(409).json({
-        message: "Admin already exists with this email.",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const result = await pool.query(
-      `INSERT INTO admin (
-        full_name,
-        email,
-        password,
-        phone_number
-      )
-      VALUES ($1, $2, $3, $4)
-      RETURNING
-        admin_id,
-        full_name,
-        email,
-        phone_number`,
-      [
-        full_name,
-        email,
-        hashedPassword,
-        phone_number,
-      ]
-    );
-
-    return res.status(201).json({
-      message: "Admin registration successful.",
-      admin: result.rows[0],
-    });
-
-  } catch (error) {
-    console.error("Admin registration error:", error);
-
-    return res.status(500).json({
-      message: "Admin registration failed.",
-      error: error.message,
-    });
-  }
-};
-
-
-// =====================================================
-// ADMIN LOGIN
-// =====================================================
+const ALLOWED_ADMIN_EMAIL = "sara@gmail.com";
 
 const loginAdmin = async (req, res) => {
   try {
@@ -87,11 +19,20 @@ const loginAdmin = async (req, res) => {
       });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Only the single allowed admin account may log in
+    if (normalizedEmail !== ALLOWED_ADMIN_EMAIL) {
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
+    }
+
     const result = await pool.query(
       `SELECT *
        FROM admin
-       WHERE email = $1`,
-      [email]
+       WHERE LOWER(TRIM(email)) = $1`,
+      [normalizedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -593,11 +534,16 @@ const getDepartments = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
-        department_id,
-        department_name,
-        description
-       FROM department
-       ORDER BY department_id`
+        d.department_id,
+        d.department_name,
+        d.description,
+        d.created_by,
+        a.full_name AS created_by_name,
+        a.email AS created_by_email
+       FROM department d
+       LEFT JOIN admin a
+         ON d.created_by = a.admin_id
+       ORDER BY d.department_id`
     );
 
     return res.status(200).json({
@@ -624,6 +570,7 @@ const addDepartment = async (req, res) => {
     const {
       department_name,
       description,
+      admin_id,
     } = req.body;
 
     if (!department_name) {
@@ -632,16 +579,28 @@ const addDepartment = async (req, res) => {
       });
     }
 
+    if (!admin_id) {
+      return res.status(400).json({
+        message: "Admin ID is required.",
+      });
+    }
+
     const result = await pool.query(
       `INSERT INTO department (
         department_name,
-        description
+        description,
+        created_by
        )
-       VALUES ($1, $2)
-       RETURNING *`,
+       VALUES ($1, $2, $3)
+       RETURNING
+         department_id,
+         department_name,
+         description,
+         created_by`,
       [
         department_name,
         description || null,
+        admin_id,
       ]
     );
 
@@ -672,11 +631,18 @@ const updateDepartment = async (req, res) => {
     const {
       department_name,
       description,
+      admin_id,
     } = req.body;
 
     if (!department_name) {
       return res.status(400).json({
         message: "Department name is required.",
+      });
+    }
+
+    if (!admin_id) {
+      return res.status(400).json({
+        message: "Admin ID is required.",
       });
     }
 
@@ -686,17 +652,20 @@ const updateDepartment = async (req, res) => {
          department_name = $1,
          description = $2
        WHERE department_id = $3
+         AND created_by = $4
        RETURNING *`,
       [
         department_name,
         description || null,
         departmentId,
+        admin_id,
       ]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Department not found.",
+      return res.status(403).json({
+        message:
+          "You can only update departments you created.",
       });
     }
 
@@ -723,6 +692,13 @@ const updateDepartment = async (req, res) => {
 const deleteDepartment = async (req, res) => {
   try {
     const departmentId = req.params.id;
+    const { admin_id } = req.body;
+
+    if (!admin_id) {
+      return res.status(400).json({
+        message: "Admin ID is required.",
+      });
+    }
 
     const doctorCheck = await pool.query(
       `SELECT COUNT(*)
@@ -741,13 +717,15 @@ const deleteDepartment = async (req, res) => {
     const result = await pool.query(
       `DELETE FROM department
        WHERE department_id = $1
+         AND created_by = $2
        RETURNING department_id`,
-      [departmentId]
+      [departmentId, admin_id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Department not found.",
+      return res.status(403).json({
+        message:
+          "You can only delete departments you created.",
       });
     }
 
@@ -1114,7 +1092,6 @@ const dismissComplaint = async (req, res) => {
 // =====================================================
 
 module.exports = {
-  registerAdmin,
   loginAdmin,
 
   getAdminProfile,

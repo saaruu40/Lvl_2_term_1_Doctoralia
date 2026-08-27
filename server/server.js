@@ -5,16 +5,20 @@ require("dotenv").config();
 
 const pool = require("./config/db");
 const doctorRoutes = require("./routes/doctorRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const patientRoutes = require("./routes/patientRoutes");
-const adminRoutes = require("./routes/adminRoutes");
 const departmentRoutes = require("./routes/departmentRoutes");
-const complaintRoutes = require("./routes/complaintRoutes");
-
+const availabilityRoutes = require("./routes/availabilityRoutes");
 
 const app = express();
 
-
+// app.use(
+//   cors({
+//     origin: "http://localhost:5173",
+//     credentials: true,
+//   })
+// );
 app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:5174"],
@@ -31,11 +35,11 @@ app.use(
 );
 
 app.use("/api/doctors", doctorRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/patients", patientRoutes);
-app.use("/api/admin", adminRoutes);
 app.use("/api/departments", departmentRoutes);
-app.use("/api/complaints", complaintRoutes);
+app.use("/api/availability", availabilityRoutes);
 
 app.get("/", (req, res) => {
   res.json({

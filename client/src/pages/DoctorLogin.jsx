@@ -49,11 +49,7 @@ const DoctorLogin = () => {
       }
 
       localStorage.setItem("doctor", JSON.stringify(result.doctor));
-
-      setMessageType("success");
-      setMessage("Login successful.");
-
-     // navigate("/doctor-dashboard");
+      navigate("/doctor-dashboard");
     } catch (error) {
       setMessageType("error");
       setMessage(error.message);

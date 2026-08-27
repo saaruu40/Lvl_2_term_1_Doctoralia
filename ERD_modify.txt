@@ -1,0 +1,58 @@
+Doctoralia — ERD_modify.txt
+Feature: Doctor Side Schedule Management & Availability
+
+Relationships:
+
+Doctor (1) ──< Doctor_Schedule >── (1) Schedule (N) ──> Hospital (1)
+   M           junction            N      N               1
+
+Details:
+
+- Doctor ||--o{ Doctor_Schedule : has
+  PK doctor_id, FK department_id, etc.
+  Cardinality: 1 doctor has 0..N rows in doctor_schedule.
+
+- Schedule ||--o{ Doctor_Schedule : has
+  PK schedule_id, FK hospital_id, available_date, start_time, end_time
+  Cardinality: 1 schedule is linked to 0..N rows in doctor_schedule.
+
+- Doctor_Schedule }o--|| Doctor : belongs
+  }o--|| Schedule : belongs
+  Composite PK (doctor_id, schedule_id)
+  Attributes: status ENUM('AVAILABLE','WORKING','UNAVAILABLE') — only these three.
+  Reason: status is per doctor+schedule, not per schedule alone.
+
+- Hospital ||--o{ Schedule : has
+  PK hospital_id
+  Cardinality: 1 hospital has 0..N schedules (1:N).
+  FK schedule.hospital_id -> hospital.hospital_id
+  Reason: schedule must specify hospital where doctor available.
+
+- Appointment }o--|| Doctor : booked with
+  }o--|| Patient : booked by
+  }o--|| Schedule (nullable, set by staff) : uses
+  }o--|| Hospital (nullable, set by staff) : at
+
+ASCII ERD:
+
+[ admin ]         [ department ]<──[ doctor ]──┬──[ doctor_schedule ]──┬──[ schedule ]──[ hospital ]
+   |                    |            (1)      |       (M:N)          |       (1)         (N:1) |
+   |                    |                    M:N                    M:N                 1:N    |
+   |                    └────────────────────┘                        └───────────────────┘
+[ patient ]──[ appointment ]──[ payment ]
+                 |
+           [ prescription ] etc.
+
+Changes from previous ERD (in erd_guide.txt):
+- Removed edge Doctor 1:N Schedule (via schedule.doctor_id).
+- Added Hospital 1:N Schedule (new FK).
+- Added junction Doctor_Schedule M:N with status.
+- Removed attribute schedule.slot_status; added doctor_schedule.status.
+- Kept appointment -> schedule FK but now validates via junction.
+
+What to do in erd_guide.txt / ERD tool:
+- Delete line/arrow schedule.doctor_id.
+- Add table doctor_schedule between doctor and schedule.
+- Add FK schedule.hospital_id -> hospital.
+- Annotate doctor_schedule.status CHECK AVAILABLE|WORKING|UNAVAILABLE.
+- Regenerate PNG with same styling as existing ERD.

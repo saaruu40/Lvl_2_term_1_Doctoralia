@@ -1,0 +1,156 @@
+.doctor-dashboard {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background: #f7faf9;
+  min-height: 100vh;
+}
+
+.doctor-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+}
+
+.doctor-dash-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #0c6e74;
+}
+
+.logout-btn {
+  padding: 6px 12px;
+  border: 1px solid #0c6e74;
+  background: #fff;
+  color: #0c6e74;
+  cursor: pointer;
+}
+
+.dash-message {
+  padding: 10px;
+  background: #e8f1f0;
+  border: 1px solid #0c6e74;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+.dash-message.success {
+  background: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+.dash-message.warning {
+  background: #fff3cd;
+  border-color: #ffe69c;
+  color: #856404;
+}
+
+.window-note {
+  font-size: 0.85rem;
+  color: #555;
+  background: #fff3cd;
+  border: 1px solid #ffe69c;
+  padding: 8px;
+}
+
+.schedule-form-section,
+.schedule-list-section {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.schedule-form {
+  display: grid;
+  gap: 10px;
+  max-width: 400px;
+}
+
+.schedule-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  gap: 4px;
+}
+
+.schedule-form input,
+.schedule-form select {
+  padding: 6px;
+  border: 1px solid #ccc;
+}
+
+.schedule-form button {
+  padding: 8px;
+  background: #0c6e74;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.schedule-form button[type="button"] {
+  background: #888;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.schedule-table th {
+  background: #e8f1f0;
+}
+
+.status-badge {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  border-radius: 3px;
+}
+
+.status-badge.AVAILABLE,
+.status-badge.available {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-badge.WORKING {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.status-badge.UNAVAILABLE,
+.status-badge.schedule-ended {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-badge.upcoming {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.schedule-table button {
+  padding: 4px 8px;
+  margin-right: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}

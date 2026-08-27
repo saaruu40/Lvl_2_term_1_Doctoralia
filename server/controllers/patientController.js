@@ -401,6 +401,56 @@ const createAppointment = async (req, res) => {
       });
     }
 
+    // Check today's availability - booking only if AVAILABLE
+    const { getDhakaNow, formatPgDate, computeAvailabilityStatus } = require("../utils/time");
+    const nowDhaka = getDhakaNow();
+    const y = nowDhaka.getFullYear();
+    const m = String(nowDhaka.getMonth() + 1).padStart(2, "0");
+    const d = String(nowDhaka.getDate()).padStart(2, "0");
+    const todayStr = `${y}-${m}-${d}`;
+
+    const todaySchedule = await pool.query(
+      `SELECT s.available_date, s.start_time, s.end_time
+       FROM schedule s
+       JOIN doctor_schedule ds ON ds.schedule_id=s.schedule_id
+       WHERE ds.doctor_id=$1 AND s.available_date=$2
+       ORDER BY s.start_time ASC LIMIT 1`,
+      [doctor_id, todayStr]
+    );
+
+    let status = "UNAVAILABLE";
+    if (todaySchedule.rows.length > 0) {
+      const r = todaySchedule.rows[0];
+      const dateStr = formatPgDate(r.available_date);
+      status = computeAvailabilityStatus(dateStr, r.start_time, r.end_time, nowDhaka);
+    }
+
+    if (status === "WORKING") {
+      return res.status(403).json({ message: "Cannot book an appointment for today." });
+    }
+    if (status === "UNAVAILABLE" && todaySchedule.rows.length > 0) {
+      const r = todaySchedule.rows[0];
+      const nowM = nowDhaka.getHours() * 60 + nowDhaka.getMinutes();
+      const endM = String(r.end_time).split(":").reduce((a,c,i)=> i===0? Number(c)*60 : a+Number(c),0);
+      if (nowM >= endM) {
+        return res.status(403).json({ message: "Doctor is unavailable for today." });
+      }
+    }
+    // If today has schedule and not AVAILABLE, block; if no schedule but we still allow pending for future? Spec: no schedule => UNAVAILABLE
+    // For today's booking, require AVAILABLE. Future booking via staff assignment remains separate.
+    // Enforce: if today has a schedule and status !== AVAILABLE then block direct booking for today
+    if (todaySchedule.rows.length > 0 && status !== "AVAILABLE") {
+      return res.status(403).json({ message: status === "WORKING" ? "Cannot book an appointment for today." : "Doctor is unavailable for today." });
+    }
+
+    // If no today's schedule, it is UNAVAILABLE for today but patient intent might be for today - block if they have no available slot today
+    // Do not block future discovery bookings that use schedule_id (not implemented here) - this endpoint is for today's generic request, so treat as today
+    // For now, if no today's schedule, allow? Spec says UNAVAILABLE if not fixed during window => should block today's booking.
+    // Decide: if no today's schedule, block booking for today
+    if (todaySchedule.rows.length === 0) {
+      return res.status(403).json({ message: "Doctor is unavailable for today." });
+    }
+
     // Create appointment request
     const result = await pool.query(
       `INSERT INTO appointment (
