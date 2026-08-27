@@ -1,6 +1,5 @@
--- Doctoralia Database Schema
--- Based on the provided Entity-Attribute List.
--- PostgreSQL
+
+
 
 CREATE TABLE IF NOT EXISTS admin (
     admin_id SERIAL PRIMARY KEY,
@@ -265,18 +264,26 @@ CREATE TABLE IF NOT EXISTS complaint (
  
 );
 
-CREATE TABLE IF NOT EXISTS referral (
+CREATE TABLE referral (
     referral_id SERIAL PRIMARY KEY,
-    patient_id INTEGER,
-    referred_by INTEGER,
-    referred_to INTEGER,
-    reason TEXT,
-    referral_status VARCHAR(50),
-    referral_date DATE,
 
-    CONSTRAINT fk_referral_patient
-        FOREIGN KEY (patient_id)
-        REFERENCES patient(patient_id),
+    appointment_id INTEGER NOT NULL UNIQUE,
+
+    referred_by INTEGER NOT NULL,
+
+    referred_to INTEGER NOT NULL,
+
+    reason TEXT,
+
+    referral_status VARCHAR(50)
+        DEFAULT 'pending',
+
+    referral_date DATE
+        DEFAULT CURRENT_DATE,
+
+    CONSTRAINT fk_referral_appointment
+        FOREIGN KEY (appointment_id)
+        REFERENCES appointment(appointment_id),
 
     CONSTRAINT fk_referral_referred_by
         FOREIGN KEY (referred_by)

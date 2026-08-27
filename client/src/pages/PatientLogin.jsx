@@ -56,7 +56,7 @@ const PatientLogin = () => {
           result.message || "Patient login failed."
         );
       }
-
+     localStorage.setItem("token", result.token);
       localStorage.setItem(
         "patient",
         JSON.stringify(result.patient)

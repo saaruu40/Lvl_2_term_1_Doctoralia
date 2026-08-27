@@ -24,25 +24,7 @@ function AdminLogin() {
     setMessageType("");
   };
 
-  // const handleSubmit = (event) => {
-  //   event.preventDefault();
 
-  //   if (!formData.email.trim() || !formData.password) {
-  //     setMessage("Please enter your email and password.");
-  //     setMessageType("error");
-  //     return;
-  //   }
-
-  //   setMessage("Admin Login Successful!");
-  //   setMessageType("success");
-
-  //   setFormData({
-  //     email: "",
-  //     password: "",
-  //   });
-
-  //   setShowPassword(false);
-  // };
   const navigate = useNavigate();
 
 const handleSubmit = async (event) => {
@@ -73,6 +55,7 @@ const handleSubmit = async (event) => {
         result.message || "Admin login failed."
       );
     }
+    localStorage.setItem("token", result.token);
 
     localStorage.setItem(
       "admin",

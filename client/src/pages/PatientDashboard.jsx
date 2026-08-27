@@ -6,6 +6,20 @@ import "../styles/PatientDashboard.css";
 const API =
   "http://localhost:5000/api/patients";
 
+  const authFetch = async (url, options = {}) => {
+  const token = localStorage.getItem("token");
+
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token}`,
+  };
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 
 function PatientDashboard() {
 
@@ -31,6 +45,12 @@ function PatientDashboard() {
 
   const [complaints, setComplaints] =
     useState([]);
+
+    const [prescriptions, setPrescriptions] =
+  useState([]);
+
+const [referrals, setReferrals] =
+  useState([]);
 
   const [selectedDepartment,
     setSelectedDepartment] =
@@ -107,6 +127,8 @@ function PatientDashboard() {
     loadAppointments();
     loadComplaints();
     loadStaff();
+    loadPrescriptions();
+loadReferrals();
 
   }, [patient?.patient_id]);
 
@@ -120,7 +142,7 @@ function PatientDashboard() {
     try {
 
       const response =
-        await fetch(
+        await authFetch(
           `${API}/profile/${patient.patient_id}`
         );
 
@@ -196,7 +218,7 @@ function PatientDashboard() {
       }
 
       const response =
-        await fetch(url);
+        await authFetch(url);
 
       const data =
         await response.json();
@@ -235,7 +257,7 @@ function PatientDashboard() {
     try {
 
       const response =
-        await fetch(
+        await authFetch(
           `${API}/departments`
         );
 
@@ -263,7 +285,7 @@ function PatientDashboard() {
     try {
 
       const response =
-        await fetch(`${API}/staff`);
+        await authFetch(`${API}/staff`);
 
       const data =
         await response.json();
@@ -287,7 +309,7 @@ function PatientDashboard() {
     try {
 
       const response =
-        await fetch(
+        await authFetch(
           `${API}/${patient.patient_id}/appointments`
         );
 
@@ -304,7 +326,92 @@ function PatientDashboard() {
       console.error(error);
     }
   };
+   // ======================================
+// PRESCRIPTIONS
+// ======================================
 
+const loadPrescriptions = async () => {
+  try {
+
+    const response = await authFetch(
+      `${API}/prescriptions`
+    );
+
+    const data = await response.json();
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("patient");
+      localStorage.removeItem("token");
+
+      alert(
+        data.message ||
+        "You cannot access your account."
+      );
+
+      navigate("/patient-login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    if (response.ok) {
+      setPrescriptions(
+        data.prescriptions || []
+      );
+    }
+
+  } catch (error) {
+    console.error(
+      "Prescription load error:",
+      error
+    );
+  }
+};
+
+
+// ======================================
+// REFERRALS
+// ======================================
+
+const loadReferrals = async () => {
+  try {
+
+    const response = await authFetch(
+      `${API}/referrals`
+    );
+
+    const data = await response.json();
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("patient");
+      localStorage.removeItem("token");
+
+      alert(
+        data.message ||
+        "You cannot access your account."
+      );
+
+      navigate("/patient-login", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    if (response.ok) {
+      setReferrals(
+        data.referrals || []
+      );
+    }
+
+  } catch (error) {
+    console.error(
+      "Referral load error:",
+      error
+    );
+  }
+};
 
   // ======================================
   // BOOK APPOINTMENT
@@ -324,7 +431,7 @@ function PatientDashboard() {
       try {
 
         const response =
-          await fetch(
+          await authFetch(
             `${API}/appointments`,
             {
               method: "POST",
@@ -407,7 +514,7 @@ function PatientDashboard() {
       try {
 
         const response =
-          await fetch(
+          await authFetch(
             `${API}/appointments/${appointmentId}`,
             {
               method: "DELETE",
@@ -432,76 +539,12 @@ function PatientDashboard() {
     };
 
 
-  // ======================================
-  // PAYMENT
-  // ======================================
-
-  // const makePayment =
-  //   async (appointmentId) => {
-
-  //     const method =
-  //       window.prompt(
-  //         "Payment method: card / cash / mobile_banking"
-  //       );
-
-  //     if (!method) {
-  //       return;
-  //     }
-
-  //     try {
-
-  //       const response =
-  //         await fetch(
-  //           `${API}/payments`,
-  //           {
-  //             method: "POST",
-
-  //             headers: {
-  //               "Content-Type":
-  //                 "application/json",
-  //             },
-
-  //             body: JSON.stringify({
-  //               patient_id:
-  //                 patient.patient_id,
-
-  //               appointment_id:
-  //                 appointmentId,
-
-  //               payment_method:
-  //                 method,
-  //             }),
-  //           }
-  //         );
-
-  //       const data =
-  //         await response.json();
-
-  //       if (response.ok) {
-
-  //         setMessage(
-  //           `${data.message} Fee: ${data.fee_type}, Amount: ৳${data.amount}`
-  //         );
-
-  //         loadAppointments();
-
-  //       } else {
-
-  //         setMessage(data.message);
-  //       }
-
-  //     } catch (error) {
-
-  //       setMessage(
-  //         "Payment failed."
-  //       );
-  //     }
-  //   };
+ 
   const makePayment = async (appointmentId) => {
   try {
     setMessage("Processing payment...");
 
-    const response = await fetch(
+    const response = await authFetch(
       `${API}/payments`,
       {
         method: "POST",
@@ -555,7 +598,7 @@ function PatientDashboard() {
     try {
 
       const response =
-        await fetch(
+        await authFetch(
           `${API}/${patient.patient_id}/complaints`
         );
 
@@ -582,7 +625,7 @@ function PatientDashboard() {
       try {
 
         const response =
-          await fetch(
+          await authFetch(
             `${API}/complaints`,
             {
               method: "POST",
@@ -665,7 +708,7 @@ function PatientDashboard() {
       try {
 
         const response =
-          await fetch(
+          await authFetch(
             `${API}/profile/${patient.patient_id}`,
             {
               method: "PUT",
@@ -719,7 +762,7 @@ function PatientDashboard() {
     localStorage.removeItem(
       "patient"
     );
-
+    localStorage.removeItem("token");
     navigate("/patient-login");
   };
 
@@ -774,7 +817,22 @@ function PatientDashboard() {
           My Appointments
         </button>
 
+    <button
+  onClick={() =>
+    setSection("prescriptions")
+  }
+>
+  My Prescriptions
+</button>
 
+
+<button
+  onClick={() =>
+    setSection("referrals")
+  }
+>
+  My Referrals
+</button>
         <button
           onClick={() =>
             setSection("complaints")
@@ -1341,7 +1399,334 @@ function PatientDashboard() {
           </section>
         )}
 
+   {/* PRESCRIPTIONS */}
 
+{section === "prescriptions" && (
+
+  <section>
+
+    <h1>
+      My Prescriptions
+    </h1>
+
+
+    {prescriptions.length === 0 ? (
+
+      <p>
+        No prescriptions found.
+      </p>
+
+    ) : (
+
+      <div className="prescription-list">
+
+        {prescriptions.map(
+          (prescription) => (
+
+            <div
+              className="prescription-card"
+
+              key={
+                prescription
+                  .prescription_id
+              }
+            >
+
+              <h3>
+                Prescription #
+                {
+                  prescription
+                    .prescription_id
+                }
+              </h3>
+
+
+              <p>
+                <strong>
+                  Appointment ID:
+                </strong>{" "}
+                #
+                {
+                  prescription
+                    .appointment_id
+                }
+              </p>
+
+
+              <p>
+                <strong>
+                  Doctor:
+                </strong>{" "}
+                Dr.{" "}
+                {
+                  prescription
+                    .doctor_name
+                }
+              </p>
+
+
+              <p>
+                <strong>
+                  Department:
+                </strong>{" "}
+                {
+                  prescription
+                    .department_name ||
+                  "-"
+                }
+              </p>
+
+
+              <p>
+                <strong>
+                  Hospital:
+                </strong>{" "}
+                {
+                  prescription
+                    .hospital_name ||
+                  "-"
+                }
+              </p>
+
+
+              <p>
+                <strong>
+                  Date:
+                </strong>{" "}
+
+                {
+                  prescription
+                    .available_date
+
+                    ? new Date(
+                        prescription
+                          .available_date
+                      )
+                        .toLocaleDateString()
+
+                    : "-"
+                }
+              </p>
+
+
+              <div className="prescription-details">
+
+                <h4>
+                  Diagnosis
+                </h4>
+
+                <p>
+                  {
+                    prescription
+                      .diagnosis
+                  }
+                </p>
+
+
+                <h4>
+                  Advice
+                </h4>
+
+                <p>
+                  {
+                    prescription
+                      .advice ||
+                    "No additional advice."
+                  }
+                </p>
+
+              </div>
+
+
+              <h4>
+                Medicines
+              </h4>
+
+
+              {
+                prescription
+                  .medicines
+                  ?.length > 0
+                  ? (
+
+                    <div className="medicine-list">
+
+                      {
+                        prescription
+                          .medicines
+                          .map(
+                            (
+                              medicine,
+                              index
+                            ) => (
+
+                              <div
+                                className="medicine-item"
+                                key={
+                                  `${medicine.medicine_id}-${index}`
+                                }
+                              >
+
+                                <strong>
+                                  {
+                                    medicine
+                                      .medicine_name
+                                  }
+                                  {" "}
+                                  {
+                                    medicine
+                                      .strength ||
+                                    ""
+                                  }
+                                </strong>
+
+
+                                <p>
+                                  Dosage:{" "}
+                                  {
+                                    medicine
+                                      .dosage ||
+                                    "-"
+                                  }
+                                </p>
+
+                                <p>
+                                  Frequency:{" "}
+                                  {
+                                    medicine
+                                      .frequency ||
+                                    "-"
+                                  }
+                                </p>
+
+                                <p>
+                                  Duration:{" "}
+                                  {
+                                    medicine
+                                      .duration ||
+                                    "-"
+                                  }
+                                </p>
+
+                                <p>
+                                  Instruction:{" "}
+                                  {
+                                    medicine
+                                      .instruction ||
+                                    "-"
+                                  }
+                                </p>
+
+                              </div>
+                            )
+                          )
+                      }
+
+                    </div>
+
+                  ) : (
+
+                    <p>
+                      No medicines prescribed.
+                    </p>
+                  )
+              }
+
+
+              <h4>
+                Suggested Tests
+              </h4>
+
+
+              {
+                prescription
+                  .tests
+                  ?.length > 0
+                  ? (
+
+                    <div className="test-list">
+
+                      {
+                        prescription
+                          .tests
+                          .map(
+                            (
+                              test,
+                              index
+                            ) => (
+
+                              <div
+                                className="test-item"
+                                key={
+                                  `${test.test_id}-${index}`
+                                }
+                              >
+
+                                <strong>
+                                  {
+                                    test
+                                      .test_name
+                                  }
+                                </strong>
+
+                                {
+                                  test
+                                    .description && (
+
+                                    <p>
+                                      {
+                                        test
+                                          .description
+                                      }
+                                    </p>
+                                  )
+                                }
+
+                              </div>
+                            )
+                          )
+                      }
+
+                    </div>
+
+                  ) : (
+
+                    <p>
+                      No tests suggested.
+                    </p>
+                  )
+              }
+
+
+              <p>
+                <strong>
+                  Created:
+                </strong>{" "}
+
+                {
+                  prescription
+                    .created_at
+
+                    ? new Date(
+                        prescription
+                          .created_at
+                      )
+                        .toLocaleString()
+
+                    : "-"
+                }
+              </p>
+
+            </div>
+
+          )
+        )}
+
+      </div>
+    )}
+
+  </section>
+)}
         {/* COMPLAINTS */}
 
         {section === "complaints" && (

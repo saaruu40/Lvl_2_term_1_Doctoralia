@@ -1,5 +1,6 @@
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
+const jwt = require("jsonwebtoken");
 
 const registerPatient = async (req, res) => {
   try {
@@ -25,7 +26,7 @@ const registerPatient = async (req, res) => {
       !address
     ) {
       return res.status(400).json({
-        message: "সবগুলো field পূরণ করা আবশ্যক।",
+        message: "Have to fill all blanks",
       });
     }
 
@@ -38,7 +39,7 @@ const registerPatient = async (req, res) => {
 
     if (existingPatient.rows.length > 0) {
       return res.status(409).json({
-        message: "এই email দিয়ে আগে থেকেই account আছে।",
+        message: "This email is already exist",
       });
     }
 
@@ -78,14 +79,14 @@ const registerPatient = async (req, res) => {
     );
 
     return res.status(201).json({
-      message: "Patient registration successful. এখন login করতে পারেন।",
+      message: "Patient registration successful.",
       patient: result.rows[0],
     });
   } catch (error) {
     console.error("Patient registration error:", error);
 
     return res.status(500).json({
-      message: "Patient registration করা যায়নি।",
+      message: "Patient registration not done ",
       error: error.message,
     });
   }
@@ -137,7 +138,7 @@ const loginPatient = async (req, res) => {
         message: "Invalid email or password.",
       });
     }
-
+   
     // =====================================================
     // EXPIRED SUSPENSION
     // =====================================================
@@ -172,12 +173,23 @@ const loginPatient = async (req, res) => {
           patient.suspended_until,
       });
     }
+    const token = jwt.sign(
+  {
+    patient_id: patient.patient_id,
+    role: "patient",
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "1d",
+  }
+);
   
 
     delete patient.password;
 
     return res.status(200).json({
       message: "Login successful.",
+      token:token,
       patient,
     });
 
@@ -1129,6 +1141,288 @@ const getPatientComplaints = async (
     });
   }
 };
+// =====================================================
+// GET LOGGED-IN PATIENT PRESCRIPTIONS
+// =====================================================
+
+const getPatientPrescriptions = async (req, res) => {
+  try {
+
+    // JWT token থেকে patient ID
+    const patientId = req.user.patient_id;
+
+
+    const result = await pool.query(
+      `SELECT
+
+        pr.prescription_id,
+        pr.appointment_id,
+        pr.diagnosis,
+        pr.advice,
+        pr.created_at,
+
+        a.appointment_status,
+
+        d.doctor_id,
+        d.full_name AS doctor_name,
+        d.qualification,
+        d.specification,
+
+        dep.department_name,
+
+        h.hospital_name,
+
+        s.available_date,
+        s.start_time,
+        s.end_time,
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'medicine_id',
+                  m.medicine_id,
+
+                'medicine_name',
+                  m.medicine_name,
+
+                'company_name',
+                  m.company_name,
+
+                'strength',
+                  m.strength,
+
+                'medicine_type',
+                  m.medicine_type,
+
+                'dosage',
+                  pm.dosage,
+
+                'frequency',
+                  pm.frequency,
+
+                'duration',
+                  pm.duration,
+
+                'instruction',
+                  pm.instruction
+              )
+            )
+
+            FROM prescription_medicine pm
+
+            JOIN medicine m
+              ON pm.medicine_id =
+                 m.medicine_id
+
+            WHERE
+              pm.prescription_id =
+              pr.prescription_id
+          ),
+          '[]'::json
+        ) AS medicines,
+
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'test_id',
+                  t.test_id,
+
+                'test_name',
+                  t.test_name,
+
+                'description',
+                  t.description,
+
+                'estimated_cost',
+                  t.estimated_cost
+              )
+            )
+
+            FROM prescription_test pt
+
+            JOIN test t
+              ON pt.test_id =
+                 t.test_id
+
+            WHERE
+              pt.prescription_id =
+              pr.prescription_id
+          ),
+          '[]'::json
+        ) AS tests
+
+
+       FROM prescription pr
+
+
+       JOIN appointment a
+         ON pr.appointment_id =
+            a.appointment_id
+
+
+       JOIN doctor d
+         ON a.doctor_id =
+            d.doctor_id
+
+
+       LEFT JOIN department dep
+         ON d.department_id =
+            dep.department_id
+
+
+       LEFT JOIN hospital h
+         ON a.hospital_id =
+            h.hospital_id
+
+
+       LEFT JOIN schedule s
+         ON a.schedule_id =
+            s.schedule_id
+
+
+       WHERE
+         a.patient_id = $1
+
+
+       ORDER BY
+         pr.created_at DESC`,
+      [patientId]
+    );
+
+
+    return res.status(200).json({
+      prescriptions:
+        result.rows,
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Patient prescriptions error:",
+      error
+    );
+
+
+    return res.status(500).json({
+      message:
+        "Could not load prescriptions.",
+
+      error:
+        error.message,
+    });
+  }
+};
+// =====================================================
+// GET LOGGED-IN PATIENT REFERRALS
+// =====================================================
+
+const getPatientReferrals = async (req, res) => {
+  try {
+
+    const patientId =
+      req.user.patient_id;
+
+
+    const result = await pool.query(
+      `SELECT
+
+        r.referral_id,
+        r.appointment_id,
+        r.reason,
+        r.referral_status,
+        r.referral_date,
+
+        source.doctor_id
+          AS referred_by_id,
+
+        source.full_name
+          AS referred_by_name,
+
+        source.specification
+          AS referred_by_specialization,
+
+        source_dep.department_name
+          AS referred_by_department,
+
+
+        target.doctor_id
+          AS referred_to_id,
+
+        target.full_name
+          AS referred_to_name,
+
+        target.specification
+          AS referred_to_specialization,
+
+        target_dep.department_name
+          AS referred_to_department
+
+
+       FROM referral r
+
+
+       JOIN appointment a
+         ON r.appointment_id =
+            a.appointment_id
+
+
+       JOIN doctor source
+         ON r.referred_by =
+            source.doctor_id
+
+
+       JOIN doctor target
+         ON r.referred_to =
+            target.doctor_id
+
+
+       LEFT JOIN department source_dep
+         ON source.department_id =
+            source_dep.department_id
+
+
+       LEFT JOIN department target_dep
+         ON target.department_id =
+            target_dep.department_id
+
+
+       WHERE
+         a.patient_id = $1
+
+
+       ORDER BY
+         r.referral_id DESC`,
+      [patientId]
+    );
+
+
+    return res.status(200).json({
+      referrals:
+        result.rows,
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Patient referrals error:",
+      error
+    );
+
+
+    return res.status(500).json({
+      message:
+        "Could not load referrals.",
+
+      error:
+        error.message,
+    });
+  }
+};
 module.exports = {
   registerPatient,
   loginPatient,
@@ -1148,4 +1442,6 @@ module.exports = {
 
   createPatientComplaint,
   getPatientComplaints,
+    getPatientPrescriptions,
+  getPatientReferrals
 };

@@ -1,5 +1,6 @@
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
+const jwt = require("jsonwebtoken");
 
 
 // =====================================================
@@ -112,9 +113,20 @@ const loginAdmin = async (req, res) => {
         message: "Invalid email or password.",
       });
     }
+    const token = jwt.sign(
+  {
+    admin_id: admin.admin_id,
+    role: "admin",
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "1d",
+  }
+);
 
     return res.status(200).json({
       message: "Admin login successful.",
+      token:token,
       admin: {
         admin_id: admin.admin_id,
         full_name: admin.full_name,
@@ -271,13 +283,14 @@ const getPendingDoctors = async (req, res) => {
 const approveDoctor = async (req, res) => {
   try {
     const doctorId = req.params.id;
-    const { admin_id } = req.body;
+    //const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+    const admin_id = req.user.admin_id;
 
     const result = await pool.query(
       `UPDATE doctor
@@ -324,13 +337,14 @@ const approveDoctor = async (req, res) => {
 const rejectDoctor = async (req, res) => {
   try {
     const doctorId = req.params.id;
-    const { admin_id } = req.body;
+    // const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+    const admin_id = req.user.admin_id;
 
     const result = await pool.query(
       `UPDATE doctor
@@ -411,13 +425,14 @@ const getPendingStaff = async (req, res) => {
 const approveStaff = async (req, res) => {
   try {
     const staffId = req.params.id;
-    const { admin_id } = req.body;
+    //const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+    const admin_id = req.user.admin_id;
 
     const result = await pool.query(
       `UPDATE staff
@@ -463,14 +478,14 @@ const approveStaff = async (req, res) => {
 const rejectStaff = async (req, res) => {
   try {
     const staffId = req.params.id;
-    const { admin_id } = req.body;
+    // const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
-
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+  const admin_id = req.user.admin_id;
     const result = await pool.query(
       `UPDATE staff
        SET
@@ -937,13 +952,14 @@ const suspendFromComplaint = async (req, res) => {
 
   try {
     const complaintId = req.params.id;
-    const { admin_id } = req.body;
+    // const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+    const admin_id = req.user.admin_id;
 
     await client.query("BEGIN");
 
@@ -1058,13 +1074,14 @@ const suspendFromComplaint = async (req, res) => {
 const dismissComplaint = async (req, res) => {
   try {
     const complaintId = req.params.id;
-    const { admin_id } = req.body;
+    // const { admin_id } = req.body;
 
-    if (!admin_id) {
-      return res.status(400).json({
-        message: "Admin ID is required.",
-      });
-    }
+    // if (!admin_id) {
+    //   return res.status(400).json({
+    //     message: "Admin ID is required.",
+    //   });
+    // }
+    const admin_id = req.user.admin_id;
 
     const result = await pool.query(
       `UPDATE complaint

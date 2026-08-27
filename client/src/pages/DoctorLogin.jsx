@@ -23,44 +23,124 @@ const DoctorLogin = () => {
     }));
   };
 
+  // const handleSubmit = async (event) => {
+  //   event.preventDefault();
+  //   setMessage("");
+
+  //   try {
+  //     setLoading(true);
+
+  //     const response = await fetch(
+  //       "http://localhost:5000/api/doctors/login",
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //         },
+  //         credentials: "include",
+  //         body: JSON.stringify(formData),
+  //       }
+  //     );
+
+  //     const result = await response.json();
+
+  //     if (!response.ok) {
+  //       throw new Error(result.message || "Doctor login failed.");
+  //     }
+  //      localStorage.setItem("token", result.token);    
+  //     localStorage.setItem("doctor", JSON.stringify(result.doctor));
+
+  //     setMessageType("success");
+  //     setMessage("Login successful.");
+
+  //    // navigate("/doctor-dashboard");
+  //   } catch (error) {
+  //     setMessageType("error");
+  //     setMessage(error.message);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
   const handleSubmit = async (event) => {
-    event.preventDefault();
-    setMessage("");
+  event.preventDefault();
 
-    try {
-      setLoading(true);
+  setMessage("");
 
-      const response = await fetch(
-        "http://localhost:5000/api/doctors/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify(formData),
-        }
-      );
+  try {
+    setLoading(true);
 
-      const result = await response.json();
+    const response = await fetch(
+      "http://localhost:5000/api/doctors/login",
+      {
+        method: "POST",
 
-      if (!response.ok) {
-        throw new Error(result.message || "Doctor login failed.");
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify(formData),
       }
+    );
 
-      localStorage.setItem("doctor", JSON.stringify(result.doctor));
+    const result = await response.json();
 
-      setMessageType("success");
-      setMessage("Login successful.");
-
-     // navigate("/doctor-dashboard");
-    } catch (error) {
-      setMessageType("error");
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
+    if (!response.ok) {
+      throw new Error(
+        result.message ||
+        "Doctor login failed."
+      );
     }
-  };
+
+    // ==============================
+    // SAVE JWT TOKEN
+    // ==============================
+
+    localStorage.setItem(
+      "token",
+      result.token
+    );
+
+
+    // ==============================
+    // SAVE DOCTOR INFO
+    // ==============================
+
+    localStorage.setItem(
+      "doctor",
+      JSON.stringify(
+        result.doctor
+      )
+    );
+
+
+    setMessageType("success");
+
+    setMessage(
+      "Login successful."
+    );
+
+
+    // ==============================
+    // GO TO DOCTOR DASHBOARD
+    // ==============================
+
+    navigate(
+      "/doctor-dashboard"
+    );
+
+  } catch (error) {
+
+    setMessageType("error");
+
+    setMessage(
+      error.message
+    );
+
+  } finally {
+
+    setLoading(false);
+  }
+};
 
   return (
     <div className="doctor-auth-page">

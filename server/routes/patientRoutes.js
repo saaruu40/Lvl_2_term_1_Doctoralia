@@ -1,5 +1,10 @@
 
 const express = require("express");
+const authMiddleware =
+  require("../middleware/authMiddleware");
+
+const roleMiddleware =
+  require("../middleware/roleMiddleware");
 
 const {
   registerPatient,
@@ -21,6 +26,8 @@ const {
 
   createPatientComplaint,
   getPatientComplaints,
+  getPatientPrescriptions,
+getPatientReferrals,
 } = require("../controllers/patientController");
 
 
@@ -129,6 +136,28 @@ router.post(
 router.get(
   "/:patientId/complaints",
   getPatientComplaints
+);
+// ===============================
+// PRESCRIPTIONS
+// ===============================
+
+router.get(
+  "/prescriptions",
+  authMiddleware,
+  roleMiddleware("patient"),
+  getPatientPrescriptions
+);
+
+
+// ===============================
+// REFERRALS
+// ===============================
+
+router.get(
+  "/referrals",
+  authMiddleware,
+  roleMiddleware("patient"),
+  getPatientReferrals
 );
 
 

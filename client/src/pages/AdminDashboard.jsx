@@ -5,6 +5,20 @@ import logo from "../assets/logo.jfif";
 
 const API = "http://localhost:5000/api/admin";
 
+const authFetch = async (url, options = {}) => {
+  const token = localStorage.getItem("token");
+
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token}`,
+  };
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 function AdminDashboard() {
   const navigate = useNavigate();
 
@@ -91,7 +105,7 @@ function AdminDashboard() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/dashboard/stats`
       );
 
@@ -108,7 +122,7 @@ function AdminDashboard() {
 
   const loadPendingDoctors = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/doctors/pending`
       );
 
@@ -125,7 +139,7 @@ function AdminDashboard() {
 
   const loadPendingStaff = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/staff/pending`
       );
 
@@ -144,7 +158,7 @@ function AdminDashboard() {
     if (!storedAdmin) return;
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/history/doctors/${storedAdmin.admin_id}`
       );
 
@@ -163,7 +177,7 @@ function AdminDashboard() {
     if (!storedAdmin) return;
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/history/staff/${storedAdmin.admin_id}`
       );
 
@@ -180,7 +194,7 @@ function AdminDashboard() {
 
   const loadDepartments = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/departments`
       );
 
@@ -201,7 +215,7 @@ function AdminDashboard() {
 
   const loadComplaints = async () => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/complaints`
       );
 
@@ -233,16 +247,16 @@ function AdminDashboard() {
     action
   ) => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/doctors/${doctorId}/${action}`,
         {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
-          }),
+          // body: JSON.stringify({
+          //   admin_id: storedAdmin.admin_id,
+          // }),
         }
       );
 
@@ -273,19 +287,19 @@ function AdminDashboard() {
     action
   ) => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/staff/${staffId}/${action}`,
         {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
-          }),
+          // body: JSON.stringify({
+          //   admin_id: storedAdmin.admin_id,
+          // }),
         }
       );
-
+// 
       const data = await response.json();
 
       if (!response.ok) {
@@ -313,17 +327,8 @@ function AdminDashboard() {
     action
   ) => {
     try {
-      // const confirmed = window.confirm(
-      //   action === "suspend"
-      //     ? "Are you sure you want to suspend this user for 5 days?"
-      //     : "Are you sure you want to dismiss this complaint?"
-      // );
-
-      // if (!confirmed) {
-      //   return;
-      // }
-
-      const response = await fetch(
+     
+      const response = await authFetch(
         `${API}/complaints/${complaintId}/${action}`,
         {
           method: "PATCH",
@@ -332,9 +337,9 @@ function AdminDashboard() {
             "Content-Type": "application/json",
           },
 
-          body: JSON.stringify({
-            admin_id: storedAdmin.admin_id,
-          }),
+          // body: JSON.stringify({
+          //   admin_id: storedAdmin.admin_id,
+          // }),
         }
       );
 
@@ -457,7 +462,7 @@ function AdminDashboard() {
         ? `${API}/departments/${editingDepartment}`
         : `${API}/departments`;
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method: editingDepartment ? "PUT" : "POST",
 
         headers: {
@@ -516,7 +521,7 @@ function AdminDashboard() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API}/departments/${departmentId}`,
         {
           method: "DELETE",
@@ -546,6 +551,7 @@ function AdminDashboard() {
 
   const logout = () => {
     localStorage.removeItem("admin");
+     localStorage.removeItem("token");
    // navigate("/login");
      document.body.style.overflow = "auto";
   document.body.style.pointerEvents = "auto";
