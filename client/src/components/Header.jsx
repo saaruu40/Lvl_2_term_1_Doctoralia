@@ -5,12 +5,12 @@ import "../styles/Header.css";
 function Header() {
   return (
     <header className="main-header">
-      <Link to="/register" className="logo-link">
+      <Link to="/login" className="logo-link">
         <img src={logo} alt="Doctoralia Logo" className="header-logo" />
       </Link>
 
       <nav className="header-nav">
-        <Link to="/register">Admin Registration</Link>
+        {/* Admin Registration disabled: only one admin (sara) */}
         <Link to="/login">Admin Login</Link>
         <Link to="/doctor-registration">Doctor Registration</Link>
         <Link to="/doctor-login">Doctor Login</Link>

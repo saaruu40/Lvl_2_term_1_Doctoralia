@@ -10,6 +10,7 @@ const patientRoutes = require("./routes/patientRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const departmentRoutes = require("./routes/departmentRoutes");
 const complaintRoutes = require("./routes/complaintRoutes");
+const learnRoutes = require("./routes/learnRoutes");
 
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/patients", patientRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/complaints", complaintRoutes);
+app.use("/api/learn", learnRoutes);
 
 app.get("/", (req, res) => {
   res.json({

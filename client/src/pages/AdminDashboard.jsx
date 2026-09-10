@@ -66,6 +66,8 @@ function AdminDashboard() {
   const [editingDepartment, setEditingDepartment] =
     useState(null);
 
+  const [deptSearch, setDeptSearch] = useState("");
+
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -192,10 +194,11 @@ function AdminDashboard() {
   };
 
 
-  const loadDepartments = async () => {
+  const loadDepartments = async (search = deptSearch) => {
     try {
+      const q = search && String(search).trim() ? `?search=${encodeURIComponent(String(search).trim())}` : "";
       const response = await authFetch(
-        `${API}/departments`
+        `${API}/departments${q}`
       );
 
       const data = await response.json();
@@ -207,6 +210,12 @@ function AdminDashboard() {
       console.error(error);
     }
   };
+
+  // Debounced search: fetch from DB on typing
+  useEffect(() => {
+    const t = setTimeout(() => { if (storedAdmin) loadDepartments(deptSearch); }, 350);
+    return () => clearTimeout(t);
+  }, [deptSearch]);
 
 
   // ============================
@@ -487,7 +496,7 @@ function AdminDashboard() {
 
       setEditingDepartment(null);
 
-      await loadDepartments();
+      await loadDepartments(deptSearch);
       await loadStats();
 
     } catch (error) {
@@ -536,7 +545,7 @@ function AdminDashboard() {
 
       setMessage(data.message);
 
-      await loadDepartments();
+      await loadDepartments(deptSearch);
       await loadStats();
 
     } catch (error) {
@@ -1214,6 +1223,30 @@ function AdminDashboard() {
               )}
 
             </form>
+
+            <div className="department-search-bar" style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Search departments by name..."
+                value={deptSearch}
+                onChange={(e) => setDeptSearch(e.target.value)}
+                style={{ flex: 1, padding: "8px 10px", border: "1px solid #d0d7de", borderRadius: 6 }}
+              />
+              {deptSearch && (
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={() => setDeptSearch("")}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {deptSearch && departments.length === 0 ? (
+              <p style={{ fontSize: "0.9rem", color: "#666", marginBottom: 12 }}>
+                No departments match &quot;{deptSearch}&quot;.
+              </p>
+            ) : null}
 
 
             <div className="department-list">

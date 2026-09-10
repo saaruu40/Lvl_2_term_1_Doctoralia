@@ -9,6 +9,15 @@ const jwt = require("jsonwebtoken");
 
 const registerAdmin = async (req, res) => {
   try {
+    // SINGLETON GUARD: only one admin allowed (sara)
+    const adminCount = await pool.query(`SELECT COUNT(*) FROM admin`);
+    if (Number(adminCount.rows[0].count) >= 1) {
+      return res.status(403).json({
+        message: "Admin registration is disabled. Only one admin (sara) is allowed.",
+        closed: true,
+      });
+    }
+
     const {
       full_name,
       email,
@@ -80,7 +89,10 @@ const registerAdmin = async (req, res) => {
 
 const loginAdmin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
+    email = String(email || "").trim().toLowerCase();
+    // alias: bare 'sara' -> 'sara@gmail.com' for backward compat
+    if (email === "sara") email = "sara@gmail.com";
 
     if (!email || !password) {
       return res.status(400).json({
@@ -91,7 +103,7 @@ const loginAdmin = async (req, res) => {
     const result = await pool.query(
       `SELECT *
        FROM admin
-       WHERE email = $1`,
+       WHERE LOWER(email) = LOWER($1)`,
       [email]
     );
 
@@ -606,14 +618,15 @@ const getStaffHistory = async (req, res) => {
 
 const getDepartments = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT
-        department_id,
-        department_name,
-        description
-       FROM department
-       ORDER BY department_id`
-    );
+    const { search } = req.query;
+    let query = `SELECT department_id, department_name, description FROM department`;
+    const values = [];
+    if (search && search.trim()) {
+      query += ` WHERE LOWER(department_name) LIKE LOWER($1)`;
+      values.push(`%${search.trim()}%`);
+    }
+    query += ` ORDER BY department_id`;
+    const result = await pool.query(query, values);
 
     return res.status(200).json({
       departments: result.rows,
@@ -647,6 +660,14 @@ const addDepartment = async (req, res) => {
       });
     }
 
+    const dup = await pool.query(
+      `SELECT department_id FROM department WHERE LOWER(department_name) = LOWER($1)`,
+      [department_name.trim()]
+    );
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ message: "Department already exists." });
+    }
+
     const result = await pool.query(
       `INSERT INTO department (
         department_name,
@@ -655,7 +676,7 @@ const addDepartment = async (req, res) => {
        VALUES ($1, $2)
        RETURNING *`,
       [
-        department_name,
+        department_name.trim(),
         description || null,
       ]
     );
@@ -695,6 +716,14 @@ const updateDepartment = async (req, res) => {
       });
     }
 
+    const dup = await pool.query(
+      `SELECT department_id FROM department WHERE LOWER(department_name) = LOWER($1) AND department_id <> $2`,
+      [department_name.trim(), departmentId]
+    );
+    if (dup.rows.length > 0) {
+      return res.status(409).json({ message: "Department already exists." });
+    }
+
     const result = await pool.query(
       `UPDATE department
        SET
@@ -703,7 +732,7 @@ const updateDepartment = async (req, res) => {
        WHERE department_id = $3
        RETURNING *`,
       [
-        department_name,
+        department_name.trim(),
         description || null,
         departmentId,
       ]
@@ -1127,12 +1156,34 @@ const dismissComplaint = async (req, res) => {
 
 
 // =====================================================
+// ADMIN REGISTRATION STATUS (singleton check for UI)
+// =====================================================
+
+const getAdminRegistrationStatus = async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT COUNT(*) FROM admin`);
+    const count = Number(result.rows[0].count);
+    const closed = count >= 1;
+    return res.status(200).json({
+      closed,
+      count,
+      message: closed
+        ? "Admin registration is disabled. Only one admin (sara) is allowed."
+        : "Admin registration is open.",
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch admin status.", error: error.message });
+  }
+};
+
+// =====================================================
 // EXPORTS
 // =====================================================
 
 module.exports = {
   registerAdmin,
   loginAdmin,
+  getAdminRegistrationStatus,
 
   getAdminProfile,
   getDashboardStats,

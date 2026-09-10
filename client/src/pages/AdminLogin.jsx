@@ -95,7 +95,7 @@ const handleSubmit = async (event) => {
               type="email"
               id="email"
               name="email"
-              placeholder="Enter your email address"
+              placeholder="sara@gmail.com"
               value={formData.email}
               onChange={handleChange}
               autoComplete="email"
@@ -133,11 +133,8 @@ const handleSubmit = async (event) => {
           </button>
         </form>
 
-        <p className="register-text">
-          Don&apos;t have an account?{" "}
-          <Link to="/register" className="register-link">
-            Register
-          </Link>
+        <p className="register-text" style={{ fontSize: "0.85rem", color: "#666" }}>
+          Single admin system — use <strong>sara@gmail.com / sara</strong> to login. Registration is disabled.
         </p>
       </section>
     </main>

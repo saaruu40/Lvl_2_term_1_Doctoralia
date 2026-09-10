@@ -156,6 +156,19 @@ const applyStaff = async (req, res) => {
 
 
     // =============================================
+    // SINGLETON GUARD: only one staff allowed
+    // =============================================
+    const staffCount = await pool.query(
+      `SELECT COUNT(*) FROM staff WHERE approval_status IN ('pending','approved')`
+    );
+    if (Number(staffCount.rows[0].count) >= 1) {
+      return res.status(403).json({
+        message: "Staff registration is closed. Only one staff is allowed and has already been registered.",
+        closed: true,
+      });
+    }
+
+    // =============================================
     // CHECK EXISTING STAFF
     // =============================================
 
@@ -758,7 +771,7 @@ const getStaffAppointments =
 
             s.end_time,
 
-            s.slot_status,
+            ds.status as slot_status,
 
 
             pay.payment_id,
@@ -799,6 +812,9 @@ const getStaffAppointments =
 
              ON a.schedule_id =
                 s.schedule_id
+
+           LEFT JOIN doctor_schedule ds
+             ON ds.schedule_id = s.schedule_id AND ds.doctor_id = a.doctor_id
 
 
            LEFT JOIN payment pay
@@ -943,7 +959,10 @@ const getHospitals =
 
 
 // =====================================================
-// STAFF SET HOSPITAL + SCHEDULE
+// STAFF SET HOSPITAL + ASSIGN EXISTING DOCTOR SCHEDULE
+// Staff must NOT create/edit/delete doctor schedules.
+// Doctor schedules are managed only by doctors (00:01-03:00 window).
+// Staff only assigns appointment to an existing available slot.
 // =====================================================
 
 const scheduleAppointment =
@@ -982,24 +1001,18 @@ const scheduleAppointment =
 
         hospital_id,
 
-        available_date,
-
-        start_time,
-
-        end_time,
+        schedule_id,
 
       } = req.body;
 
 
       // =============================================
-      // REQUIRED VALUES
+      // REQUIRED VALUES - staff only assigns existing slot
       // =============================================
 
       if (
         !hospital_id ||
-        !available_date ||
-        !start_time ||
-        !end_time
+        !schedule_id
       ) {
 
         return res
@@ -1007,26 +1020,7 @@ const scheduleAppointment =
           .json({
 
             message:
-              "Hospital, appointment date, start time and end time are required.",
-          });
-      }
-
-
-      // =============================================
-      // TIME VALIDATION
-      // =============================================
-
-      if (
-        start_time >=
-        end_time
-      ) {
-
-        return res
-          .status(400)
-          .json({
-
-            message:
-              "End time must be later than start time.",
+              "Hospital and schedule (slot) are required. Select an available doctor slot created by the doctor.",
           });
       }
 
@@ -1196,240 +1190,93 @@ const scheduleAppointment =
 
 
       // =============================================
-      // DOCTOR TIME CONFLICT CHECK
+      // SCHEDULE VALIDATION - M:N: must exist in doctor_schedule with AVAILABLE
       // =============================================
 
-      const conflictResult =
+      const scheduleResultCheck =
         await client.query(
-
-          `SELECT
-             schedule_id
-
-           FROM schedule
-
-           WHERE
-             doctor_id = $1
-
-             AND available_date = $2
-
-             AND schedule_id <>
-               COALESCE($5, -1)
-
-             AND NOT (
-
-               end_time <=
-                 $3::time
-
-               OR
-
-               start_time >=
-                 $4::time
-
-             )
-
-           LIMIT 1`,
-
-          [
-            appointment.doctor_id,
-
-            available_date,
-
-            start_time,
-
-            end_time,
-
-            appointment.schedule_id,
-          ]
+          `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, ds.doctor_id
+           FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
+           WHERE s.schedule_id = $1 AND ds.doctor_id=$2 FOR UPDATE`,
+          [schedule_id, appointment.doctor_id]
         );
 
-
-      if (
-        conflictResult
-          .rows.length > 0
-      ) {
-
-        await client.query(
-          "ROLLBACK"
-        );
-
-
-        return res
-          .status(409)
-          .json({
-
-            message:
-              "This doctor already has another appointment in the selected time range.",
-          });
+      if (scheduleResultCheck.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ message: "Selected schedule slot not found or not owned by this doctor." });
       }
 
+      const slot = scheduleResultCheck.rows[0];
 
-      // =============================================
-      // MAXIMUM PATIENT PER DAY CHECK
-      // =============================================
-
-      if (
-        appointment
-          .max_patient_num
-      ) {
-
-        const dailyCountResult =
-          await client.query(
-
-            `SELECT COUNT(*)
-
-             FROM schedule
-
-             WHERE doctor_id = $1
-
-               AND available_date = $2
-
-               AND schedule_id <>
-                 COALESCE($3, -1)`,
-
-            [
-              appointment.doctor_id,
-
-              available_date,
-
-              appointment.schedule_id,
-            ]
-          );
-
-
-        const totalPatients =
-          Number(
-            dailyCountResult
-              .rows[0]
-              .count
-          );
-
-
-        if (
-          totalPatients >=
-          Number(
-            appointment
-              .max_patient_num
-          )
-        ) {
-
-          await client.query(
-            "ROLLBACK"
-          );
-
-
-          return res
-            .status(409)
-            .json({
-
-              message:
-                "This doctor has reached the maximum patient limit for the selected date.",
-            });
+      if (slot.slot_status === "WORKING") {
+        const bookedCheck = await client.query(
+          `SELECT appointment_id FROM appointment WHERE schedule_id = $1 AND doctor_id=$2 AND appointment_id <> $3 AND appointment_status IN ('scheduled','confirmed') LIMIT 1`,
+          [schedule_id, appointment.doctor_id, appointmentId]
+        );
+        if (bookedCheck.rows.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ message: "Selected slot is already booked by another appointment." });
         }
       }
 
+      if (slot.slot_status === "UNAVAILABLE") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Selected slot is marked unavailable by the doctor." });
+      }
 
-      // =============================================
-      // CREATE OR UPDATE SCHEDULE
-      // =============================================
-
-      let scheduleResult;
-
-
-      if (
-        appointment.schedule_id
-      ) {
-
-        scheduleResult =
-          await client.query(
-
-            `UPDATE schedule
-
-             SET
-               doctor_id = $1,
-
-               available_date = $2,
-
-               start_time = $3,
-
-               end_time = $4,
-
-               slot_status =
-                 'booked'
-
-             WHERE
-               schedule_id = $5
-
-             RETURNING *`,
-
-            [
-              appointment.doctor_id,
-
-              available_date,
-
-              start_time,
-
-              end_time,
-
-              appointment.schedule_id,
-            ]
-          );
-
-      } else {
-
-        scheduleResult =
-          await client.query(
-
-            `INSERT INTO schedule (
-
-              doctor_id,
-
-              available_date,
-
-              start_time,
-
-              end_time,
-
-              slot_status
-
-             )
-
-             VALUES (
-
-              $1,
-
-              $2,
-
-              $3,
-
-              $4,
-
-              'booked'
-
-             )
-
-             RETURNING *`,
-
-            [
-              appointment.doctor_id,
-
-              available_date,
-
-              start_time,
-
-              end_time,
-            ]
-          );
+      // Expired check via date+time (dynamic)
+      const now = new Date();
+      try {
+        const { isSlotExpired } = require("../utils/scheduleWindow");
+        if (isSlotExpired(slot.available_date, slot.end_time, now)) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ message: "Selected slot is expired and cannot be booked." });
+        }
+      } catch {}
+      const slotDateStr = String(slot.available_date).split("T")[0];
+      const todayStr = new Date().toISOString().split("T")[0];
+      if (slotDateStr < todayStr) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Cannot book a past date slot." });
       }
 
 
-      const schedule =
-        scheduleResult.rows[0];
+      // =============================================
+      // CHECK SLOT ALREADY BOOKED BY ANOTHER APPOINTMENT
+      // =============================================
+
+      const existingBooking = await client.query(
+        `SELECT appointment_id FROM appointment WHERE schedule_id = $1 AND appointment_id <> $2 AND appointment_status IN ('scheduled','confirmed') LIMIT 1`,
+        [schedule_id, appointmentId]
+      );
+      if (existingBooking.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ message: "This slot is already assigned to another appointment." });
+      }
+
+
+      // =============================================
+      // M:N: Booking does NOT change doctor_schedule.status (keeps AVAILABLE/WORKING)
+      // But we ensure slot stays AVAILABLE and appointment links to it.
+      // Previous slot freeing is not needed as status stays.
+      // =============================================
+
+      let finalSchedule = slot;
+      // No status change on booking; keep AVAILABLE for other patients per M:N concept
+      // If you want per-doctor booking lock, uncomment: UPDATE doctor_schedule SET status='WORKING'
+      // Keeping AVAILABLE allows many patients per same time slot up to max_patient_num if needed
 
 
       // =============================================
       // UPDATE APPOINTMENT
       // =============================================
 
+      // Use hospital from slot if staff didn't provide (schedule.hospital_id is source of truth)
+      const finalHospitalId = hospital_id || slot.hospital_id;
+      if (!finalHospitalId) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Slot has no hospital. Contact doctor to set hospital." });
+      }
       const updatedAppointment =
         await client.query(
 
@@ -1450,9 +1297,9 @@ const scheduleAppointment =
            RETURNING *`,
 
           [
-            hospital_id,
+            finalHospitalId,
 
-            schedule.schedule_id,
+            finalSchedule.schedule_id,
 
             appointmentId,
           ]
@@ -1475,7 +1322,7 @@ const scheduleAppointment =
             updatedAppointment
               .rows[0],
 
-          schedule,
+          schedule: finalSchedule,
         });
 
 
@@ -1509,6 +1356,44 @@ const scheduleAppointment =
       client.release();
     }
   };
+
+// =====================================================
+// GET AVAILABLE SCHEDULE SLOTS FOR A DOCTOR (Staff read-only)
+// Staff can VIEW but NOT modify doctor schedules
+// =====================================================
+
+const getAvailableSchedules = async (req, res) => {
+  try {
+    const staffId = req.user.staff_id;
+    const access = await getActiveStaff(staffId);
+    if (!access.ok) return sendStaffAccessError(res, access);
+
+    const { doctor_id } = req.query;
+    if (!doctor_id) {
+      return res.status(400).json({ message: "doctor_id query param is required." });
+    }
+
+    const { isSlotExpired } = require("../utils/scheduleWindow");
+    const now = new Date();
+
+    const result = await pool.query(
+      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, s.created_at, s.updated_at, ds.status as slot_status, h.hospital_name
+       FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
+       LEFT JOIN hospital h ON s.hospital_id=h.hospital_id
+       WHERE ds.doctor_id=$1 AND ds.status='AVAILABLE'
+       ORDER BY s.available_date ASC, s.start_time ASC`,
+      [doctor_id]
+    );
+
+    // Filter out expired slots dynamically
+    const available = result.rows.filter((s) => !isSlotExpired(s.available_date, s.end_time, now));
+
+    return res.status(200).json({ schedules: available });
+  } catch (error) {
+    console.error("getAvailableSchedules error:", error);
+    return res.status(500).json({ message: "Could not load available schedules.", error: error.message });
+  }
+};
 
 
 // =====================================================
@@ -2077,6 +1962,29 @@ const getStaffComplaints =
 
 
 // =====================================================
+// STAFF REGISTRATION STATUS (singleton check for UI)
+// =====================================================
+
+const getStaffRegistrationStatus = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) FROM staff WHERE approval_status IN ('pending','approved')`
+    );
+    const count = Number(result.rows[0].count);
+    const closed = count >= 1;
+    return res.status(200).json({
+      closed,
+      count,
+      message: closed
+        ? "Staff registration is closed. Only one staff is allowed and has already been registered."
+        : "Staff registration is open.",
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch staff status.", error: error.message });
+  }
+};
+
+// =====================================================
 // EXPORTS
 // =====================================================
 
@@ -2085,6 +1993,7 @@ module.exports = {
   applyStaff,
 
   loginStaff,
+  getStaffRegistrationStatus,
 
   getStaffProfile,
 
@@ -2095,6 +2004,7 @@ module.exports = {
   getHospitals,
 
   scheduleAppointment,
+  getAvailableSchedules,
 
   getComplaintTargets,
 

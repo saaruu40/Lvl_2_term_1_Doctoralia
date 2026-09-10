@@ -1,6 +1,6 @@
 
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "../styles/AdminRegister.css";
 
 function AdminRegister() {
@@ -15,6 +15,24 @@ function AdminRegister() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/admin/status");
+        const data = await res.json();
+        if (data.closed) {
+          setClosed(true);
+          setMessage(data.message);
+          setMessageType("error");
+        }
+      } catch {}
+      finally { setChecking(false); }
+    };
+    check();
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -97,6 +115,7 @@ function AdminRegister() {
     const result = await response.json();
 
     if (!response.ok) {
+      if (result.closed || response.status === 403) setClosed(true);
       throw new Error(
         result.message || "Admin registration failed."
       );
@@ -121,17 +140,31 @@ function AdminRegister() {
   }
 };
 
+  if (checking) {
+    return (
+      <main className="admin-register-page">
+        <section className="registration-card"><p>Checking registration status...</p></section>
+      </main>
+    );
+  }
+
   return (
     <main className="admin-register-page">
       <section className="registration-card">
         <div className="registration-heading">
           <h2>Admin Registration</h2>
-          <p>Create your administrator account</p>
+          <p>{closed ? "Admin registration is disabled" : "Create your administrator account"}</p>
         </div>
 
         {message && (
           <div className={`registration-message ${messageType}`}>
             {message}
+          </div>
+        )}
+
+        {closed && (
+          <div className="registration-message error" style={{ marginBottom: 12 }}>
+            Admin registration is disabled. Only one admin (sara) is allowed. Please use Admin Login.
           </div>
         )}
 
@@ -219,8 +252,8 @@ function AdminRegister() {
             />
           </div>
 
-          <button type="submit" className="register-button">
-            Register Admin
+          <button type="submit" className="register-button" disabled={closed} title={closed ? "Registration disabled" : undefined}>
+            {closed ? "Registration Disabled" : "Register Admin"}
           </button>
         </form>
 

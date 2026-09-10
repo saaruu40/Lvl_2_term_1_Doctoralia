@@ -41,6 +41,8 @@ function DoctorDashboard() {
 
   const [message, setMessage] =
     useState("");
+  const [messageType, setMessageType] =
+    useState("success");
 
 
   // =====================================================
@@ -167,6 +169,76 @@ function DoctorDashboard() {
     description: "",
   });
 
+  // =====================================================
+  // SCHEDULE MANAGEMENT (Doctor-owned, window 12:55-18:00 for tomorrow)
+  // =====================================================
+
+  const [schedules, setSchedules] = useState([]);
+  const [windowInfo, setWindowInfo] = useState(null);
+  const [hospitals, setHospitals] = useState([]);
+  const [scheduleForm, setScheduleForm] = useState({
+    available_date: "",
+    start_time: "",
+    end_time: "",
+    hospital_id: "",
+  });
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    available_date: "",
+    start_time: "",
+    end_time: "",
+    hospital_id: "",
+  });
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
+  const [showNextDayDropdown, setShowNextDayDropdown] = useState(false);
+
+  // Schedule dropdown: load authenticated doctor's NEXT-DAY schedules, select to fix/edit (window-gated)
+  const handleScheduleDropdownChange = (e) => {
+    const val = e.target.value;
+    setSelectedScheduleId(val);
+    if (!val) {
+      setEditingScheduleId(null);
+      setEditForm({ start_time: "", end_time: "", hospital_id: "" });
+      return;
+    }
+    const s = schedules.find((x) => String(x.schedule_id) === String(val));
+    if (s) startEditSchedule(s);
+  };
+
+  const handleNextDayIconSelect = (schedule) => {
+    setShowNextDayDropdown(false);
+    startEditSchedule(schedule);
+  };
+
+  // 24-hour helpers - enforce HH:MM, no AM/PM
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const HOURS = Array.from({ length: 24 }, (_, i) => pad2(i));
+  const MINUTES = Array.from({ length: 60 }, (_, i) => pad2(i));
+  const parseHHMM = (val) => {
+    const s = String(val || "");
+    if (!s.includes(":")) return { h: "", m: "" };
+    const [h, m] = s.split(":");
+    return { h: h || "", m: m || "" };
+  };
+  const updateScheduleTime = (field, part, value) => {
+    setScheduleForm((prev) => {
+      const cur = parseHHMM(prev[field]);
+      const h = part === "h" ? value : cur.h || "00";
+      const m = part === "m" ? value : cur.m || "00";
+      // if field was empty, build properly
+      const next = `${h}:${m}`;
+      return { ...prev, [field]: next };
+    });
+  };
+  const updateEditTime = (field, part, value) => {
+    setEditForm((prev) => {
+      const cur = parseHHMM(prev[field]);
+      const h = part === "h" ? value : cur.h || "00";
+      const m = part === "m" ? value : cur.m || "00";
+      return { ...prev, [field]: `${h}:${m}` };
+    });
+  };
+
 
   // =====================================================
   // CHECK LOGIN
@@ -211,43 +283,43 @@ function DoctorDashboard() {
     async (response) => {
 
       const data =
-        await response.json();
+        await response.json().catch(() => ({}));
 
-
-      if (
-        response.status === 401 ||
-        response.status === 403
-      ) {
-
-        localStorage.removeItem(
-          "doctor"
-        );
-
-        localStorage.removeItem(
-          "token"
-        );
-
-
-        alert(
-          data.message ||
-          "Your session is no longer available."
-        );
-
-
-        navigate(
-          "/doctor-login",
-          {
-            replace: true,
-          }
-        );
-
-
-        return {
-          stopped: true,
-          data,
-        };
+      // Only logout on real auth failures, not business-rule 403 WINDOW_CLOSED
+      if (response.status === 401) {
+        localStorage.removeItem("doctor");
+        localStorage.removeItem("token");
+        alert(data.message || "Your session is no longer available.");
+        navigate("/doctor-login", { replace: true });
+        return { stopped: true, data };
       }
-
+      if (
+        response.status === 403 &&
+        data.code !== "WINDOW_CLOSED" &&
+        !data.message?.includes("following day can only be managed")
+      ) {
+        // check if it's truly auth/suspension, not schedule window
+        const msg = String(data.message || "").toLowerCase();
+        const isAuthRelated =
+          msg.includes("suspended") ||
+          msg.includes("approved") ||
+          msg.includes("not found") ||
+          msg.includes("permission") ||
+          msg.includes("token") ||
+          data.code === "AUTH_MISSING";
+        if (isAuthRelated || response.status === 403 && msg.includes("another doctor")) {
+          // keep inline message too, but don't auto-logout for window case
+          // For auth-related, logout
+          if (isAuthRelated) {
+            localStorage.removeItem("doctor");
+            localStorage.removeItem("token");
+            alert(data.message || "Your session is no longer available.");
+            navigate("/doctor-login", { replace: true });
+            return { stopped: true, data };
+          }
+        }
+        // For window closed / business rule 403, return not stopped so caller shows inline error
+      }
 
       return {
         stopped: false,
@@ -275,8 +347,176 @@ function DoctorDashboard() {
     loadReceivedReferrals();
     loadComplaintTargets();
     loadComplaints();
+    loadWindowInfo();
+    loadSchedules();
+    loadHospitals();
 
   }, [doctor?.doctor_id]);
+
+  // =====================================================
+  // SCHEDULE MANAGEMENT LOADERS
+  // =====================================================
+
+  const loadWindowInfo = async () => {
+    try {
+      const response = await authFetch(`${API}/schedules/window`);
+      const { stopped, data } = await handleProtectedResponse(response);
+      if (stopped) return;
+      if (response.ok) setWindowInfo(data);
+    } catch (error) {
+      console.error("Window info error:", error);
+    }
+  };
+
+  const loadSchedules = async () => {
+    try {
+      const response = await authFetch(`${API}/schedules`);
+      const { stopped, data } = await handleProtectedResponse(response);
+      if (stopped) return;
+      if (response.ok) {
+        setSchedules(data.schedules || []);
+        // Sync windowInfo from same response for Asia/Dhaka consistency (backend is authority)
+        if (data.targetDate) {
+          setWindowInfo((prev) => prev ? { ...prev, targetDate: data.targetDate, currentDate: data.currentDate, isOpen: data.isOpen, currentTime: data.currentTime, timezone: data.timezone || prev.timezone } : prev);
+        }
+      }
+    } catch (error) {
+      console.error("Schedules error:", error);
+    }
+  };
+
+  const loadHospitals = async () => {
+    try {
+      const res = await authFetch(`${API}/hospitals`);
+      const { stopped, data } = await handleProtectedResponse(res);
+      if (stopped) return;
+      if (res.ok) setHospitals(data.hospitals || []);
+    } catch(e){ console.log("hospitals load fail", e); }
+  };
+
+  const createSchedule = async (event) => {
+    event.preventDefault();
+    console.log("[createSchedule] payload", scheduleForm);
+    if (!scheduleForm.hospital_id) { setMessage("Please select a hospital."); setMessageType("error"); return; }
+    if (!scheduleForm.available_date) { setMessage("Please select a date."); setMessageType("error"); return; }
+    try {
+      const response = await authFetch(`${API}/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          available_date: scheduleForm.available_date,
+          start_time: scheduleForm.start_time,
+          end_time: scheduleForm.end_time,
+          hospital_id: Number(scheduleForm.hospital_id),
+        }),
+      });
+      const { stopped, data } = await handleProtectedResponse(response);
+      console.log("[createSchedule] response", response.status, data);
+      if (stopped) return;
+      setMessage(data.message || data.error || (response.ok ? "Schedule created successfully." : "Failed to create schedule."));
+      setMessageType(response.ok ? "success" : "error");
+      if (response.ok) {
+        setScheduleForm({ available_date: "", start_time: "", end_time: "", hospital_id: "" });
+        await loadSchedules();
+        await loadWindowInfo();
+      }
+    } catch (error) {
+      console.log("[createSchedule] catch", error);
+      setMessage(error.message || "Could not create schedule.");
+      setMessageType("error");
+    }
+  };
+
+  const startEditSchedule = (schedule) => {
+    setEditingScheduleId(schedule.schedule_id);
+    setSelectedScheduleId(String(schedule.schedule_id));
+    setEditForm({
+      available_date: String(schedule.available_date).split("T")[0],
+      start_time: String(schedule.start_time).slice(0, 5),
+      end_time: String(schedule.end_time).slice(0, 5),
+      hospital_id: schedule.hospital_id ? String(schedule.hospital_id) : "",
+    });
+  };
+
+  const clearScheduleSelection = () => {
+    setSelectedScheduleId("");
+    setEditingScheduleId(null);
+    setEditForm({ available_date: "", start_time: "", end_time: "", hospital_id: "" });
+  };
+
+  const submitEditSchedule = async (scheduleId) => {
+    console.log("[submitEditSchedule] payload", editForm);
+    try {
+      const payload = { available_date: editForm.available_date, start_time: editForm.start_time, end_time: editForm.end_time, hospital_id: editForm.hospital_id ? Number(editForm.hospital_id) : undefined };
+      const response = await authFetch(`${API}/schedules/${scheduleId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const { stopped, data } = await handleProtectedResponse(response);
+      console.log("[submitEditSchedule] response", response.status, data);
+      if (stopped) return;
+      setMessage(data.message || data.error || (response.ok ? "Schedule updated." : "Update failed"));
+      setMessageType(response.ok ? "success" : "error");
+      if (response.ok) {
+        setEditingScheduleId(null);
+        setSelectedScheduleId("");
+        await loadSchedules();
+      }
+    } catch (error) {
+      console.log("[submitEditSchedule] catch", error);
+      setMessage(error.message || "Could not update schedule.");
+      setMessageType("error");
+    }
+  };
+
+  const deleteSchedule = async (scheduleId) => {
+    if (!window.confirm("Delete this schedule slot?")) return;
+    console.log("[deleteSchedule] id", scheduleId);
+    try {
+      const response = await authFetch(`${API}/schedules/${scheduleId}`, {
+        method: "DELETE",
+      });
+      const { stopped, data } = await handleProtectedResponse(response);
+      console.log("[deleteSchedule] response", response.status, data);
+      if (stopped) return;
+      setMessage(data.message || data.error || (response.ok ? "Deleted" : "Delete failed"));
+      setMessageType(response.ok ? "success" : "error");
+      if (response.ok) {
+        if (String(scheduleId) === String(selectedScheduleId)) {
+          setSelectedScheduleId("");
+          setEditingScheduleId(null);
+        }
+        await loadSchedules();
+      }
+    } catch (error) {
+      console.log("[deleteSchedule] catch", error);
+      setMessage(error.message || "Could not delete schedule.");
+      setMessageType("error");
+    }
+  };
+
+  const toggleAvailability = async (schedule) => {
+    const newStatus = schedule.slot_status === "available" ? "unavailable" : "available";
+    console.log("[toggleAvailability] id", schedule.schedule_id, newStatus);
+    try {
+      const response = await authFetch(`${API}/schedules/${schedule.schedule_id}/availability`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot_status: newStatus }),
+      });
+      const { stopped, data } = await handleProtectedResponse(response);
+      console.log("[toggleAvailability] response", response.status, data);
+      if (stopped) return;
+      setMessage(data.message || data.error || (response.ok ? "Updated" : "Failed"));
+      setMessageType(response.ok ? "success" : "error");
+      if (response.ok) await loadSchedules();
+    } catch (error) {
+      console.log("[toggleAvailability] catch", error);
+      setMessage(error.message || "Could not update availability.");
+      setMessageType("error");
+    }
+  };
 
 
   // =====================================================
@@ -1218,6 +1458,16 @@ function DoctorDashboard() {
           My Appointments
         </button>
 
+        <button
+          onClick={() =>
+            setSection(
+              "schedules"
+            )
+          }
+        >
+          My Schedules
+        </button>
+
 
         <button
           onClick={() =>
@@ -1270,11 +1520,9 @@ function DoctorDashboard() {
 
 
         {message && (
-
-          <div className="doctor-message">
-
+          <div className={`doctor-message ${messageType}`}>
+            {messageType === "error" ? "✕ " : "✓ "}
             {message}
-
           </div>
         )}
 
@@ -1617,6 +1865,194 @@ function DoctorDashboard() {
           </section>
         )}
 
+        {/* =============================
+            SCHEDULES - Doctor owns own slots
+        ============================== */}
+
+        {section === "schedules" && (
+          <section>
+            <h1>My Schedules</h1>
+            <p style={{ background: "#fffbeb", border: "1px solid #fcd34d", padding: "12px", borderRadius: "8px" }}>
+              <strong>Rule:</strong> You can set tomorrow&apos;s schedule only between <strong>12:55 PM and 6:00 PM (Asia/Dhaka)</strong>.
+              {windowInfo ? (
+                <>
+                  <br />
+                  Current: {windowInfo.currentDate} {windowInfo.currentTime} | Target (tomorrow): <strong>{windowInfo.targetDate}</strong> | Status:{" "}
+                  {windowInfo.isOpen ? <span style={{ color: "green", fontWeight: "bold" }}>OPEN - you can manage</span> : <span style={{ color: "red", fontWeight: "bold" }}>CLOSED</span>}
+                  <br />
+                  <small>{windowInfo.message}</small>
+                </>
+              ) : (
+                " Loading window..."
+              )}
+            </p>
+
+            {!windowInfo?.isOpen && (
+              <p style={{ color: "#b45309", background: "#fef3c7", padding: "10px", borderRadius: "6px" }}>
+                Schedule management is currently closed (window is <strong>12:55 PM – 6:00 PM inclusive Asia/Dhaka</strong>). You can view schedules but cannot create/edit/delete. Tomorrow&apos;s (<strong>{windowInfo?.targetDate}</strong>) slots are shown as <strong>UNAVAILABLE</strong> until next window opens at 12:55 PM.
+              </p>
+            )}
+
+            {/* ================= SCHEDULE LIST DROPDOWN — Next-day to year-end, 4 columns only ================= */}
+            <div style={{ background: "white", padding: "16px", borderRadius: "12px", marginTop: "15px", boxShadow: "0 4px 14px rgba(0,0,0,0.07)", border: "1px solid #e5e7eb" }}>
+              <label style={{ fontWeight: 700, color: "#0f766e" }}>Schedule List — Date | start | end | hospital <small style={{ fontWeight: 400, color: "#6b7280" }}>(your schedules from tomorrow to Dec 31)</small></label>
+              <br />
+              <select value={selectedScheduleId} onChange={handleScheduleDropdownChange} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "360px", marginTop: "8px" }}>
+                <option value="">-- Select Schedule --</option>
+                {schedules.map((s) => {
+                  const dateStr = String(s.available_date).split("T")[0];
+                  const hosp = s.hospital_name || s.hospital_id || "-";
+                  return (
+                    <option key={s.schedule_id} value={s.schedule_id}>
+                      Date: {dateStr} | start: {String(s.start_time).slice(0,5)} | end: {String(s.end_time).slice(0,5)} | hospital: {hosp}
+                    </option>
+                  );
+                })}
+              </select>
+              {schedules.length === 0 && <small style={{ marginLeft: "10px", color: "#6b7280" }}>No schedules yet — create one when window is open (12:55 PM–6:00 PM).</small>}
+              <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "6px" }}>Dropdown shows only your schedules from tomorrow through Dec 31. Pick one to fix/edit below.</p>
+            </div>
+
+            {/* Fix/Edit form for the SELECTED schedule — Date | start | end | hospital only */}
+            {selectedScheduleId && editingScheduleId && (
+              <div style={{ background: "#ecfdf5", padding: "16px", borderRadius: "12px", marginTop: "12px", border: "1px solid #6ee7b7" }}>
+                <h3 style={{ marginTop: 0, color: "#065f46" }}>Fix/Edit Selected Schedule <small style={{ color: "#6b7280", fontWeight: 400 }}>(Date | start | end | hospital)</small></h3>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "end" }}>
+                  <div>
+                    <label>Date *</label><br />
+                    <input type="date" value={editForm.available_date} onChange={(e)=>setEditForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.targetDate || ""} max={`${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }} />
+                  </div>
+                  <div>
+                    <label>Start Time * <small style={{ color: "#6b7280" }}>(24h)</small></label><br />
+                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                      <select value={parseHHMM(editForm.start_time).h} onChange={(e) => updateEditTime("start_time", "h", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                        <option value="">HH</option>{HOURS.map((h) => (<option key={h} value={h}>{h}</option>))}
+                      </select><span>:</span>
+                      <select value={parseHHMM(editForm.start_time).m} onChange={(e) => updateEditTime("start_time", "m", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                        <option value="">MM</option>{MINUTES.map((m) => (<option key={m} value={m}>{m}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label>End Time * <small style={{ color: "#6b7280" }}>(24h)</small></label><br />
+                    <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                      <select value={parseHHMM(editForm.end_time).h} onChange={(e) => updateEditTime("end_time", "h", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                        <option value="">HH</option>{HOURS.map((h) => (<option key={h} value={h}>{h}</option>))}
+                      </select><span>:</span>
+                      <select value={parseHHMM(editForm.end_time).m} onChange={(e) => updateEditTime("end_time", "m", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                        <option value="">MM</option>{MINUTES.map((m) => (<option key={m} value={m}>{m}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label>Hospital *</label><br />
+                    <select value={editForm.hospital_id} onChange={(e)=>setEditForm(prev=>({...prev,hospital_id:e.target.value}))} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth:"180px" }}>
+                      <option value="">Select Hospital</option>
+                      {hospitals.map(h=>(<option key={h.hospital_id} value={h.hospital_id}>{h.hospital_name} - {h.city}</option>))}
+                    </select>
+                  </div>
+                  <button onClick={() => submitEditSchedule(editingScheduleId)} disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Fix/Edit allowed only 12:55 PM - 6:00 PM (Asia/Dhaka)" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
+                    {windowInfo?.isOpen ? "Fix/Edit Schedule" : "Window Closed"}
+                  </button>
+                  <button onClick={clearScheduleSelection} style={{ padding: "11px 14px", background: "#e5e7eb", border: "none", borderRadius: "7px", cursor: "pointer" }}>Clear</button>
+                </div>
+                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "8px" }}>Fix for any date from tomorrow through Dec 31 same year. Window 12:55 PM–6:00 PM applies to this action only.</p>
+              </div>
+            )}
+
+            <div style={{ background: "white", padding: "20px", borderRadius: "12px", marginTop: "15px", boxShadow: "0 4px 14px rgba(0,0,0,0.07)" }}>
+              <h3>Create Slot — any date from tomorrow through Dec 31 same year</h3>
+              <form onSubmit={createSchedule} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "end" }}>
+                <div style={{ position: "relative" }}>
+                  <label>Date * <small style={{ color: "#6b7280" }}>— tomorrow to Dec 31</small></label>
+                  <br />
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <input type="date" value={scheduleForm.available_date} onChange={(e)=>setScheduleForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.targetDate || ""} max={`${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "160px" }} />
+                    <button type="button" aria-label="View schedules" aria-expanded={showNextDayDropdown} onClick={() => setShowNextDayDropdown((v) => !v)} title={showNextDayDropdown ? "Hide schedules" : "Show schedules (Date | start | end | hospital)"} style={{ padding: "10px 11px", border: "1px solid #0f766e", borderRadius: "7px", background: showNextDayDropdown ? "#0f766e" : "#fff", color: showNextDayDropdown ? "#fff" : "#0f766e", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>
+                      📅 ▾
+                    </button>
+                  </div>
+                  {showNextDayDropdown && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, background: "white", border: "1px solid #e5e7eb", borderRadius: "10px", boxShadow: "0 8px 24px rgba(0,0,0,0.14)", minWidth: "380px", maxHeight: "280px", overflowY: "auto", marginTop: "8px" }}>
+                      <div style={{ padding: "10px 12px", borderBottom: "1px solid #f3f4f6", fontWeight: 700, color: "#0f766e", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span>Schedule List — Date | start | end | hospital</span>
+                        <button type="button" onClick={() => setShowNextDayDropdown(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#6b7280" }}>✕</button>
+                      </div>
+                      {schedules.length === 0 ? (
+                        <p style={{ padding: "14px", color: "#6b7280", margin: 0 }}>No schedules yet. Create one for any date from tomorrow to Dec 31 (window 12:55 PM–6:00 PM).</p>
+                      ) : (
+                        schedules.map((s) => {
+                          const dateStr = String(s.available_date).split("T")[0];
+                          const hosp = s.hospital_name || s.hospital_id || "-";
+                          const isSelected = String(selectedScheduleId) === String(s.schedule_id);
+                          return (
+                            <button key={s.schedule_id} type="button" onClick={() => handleNextDayIconSelect(s)} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", border: "none", borderBottom: "1px solid #f9fafb", background: isSelected ? "#ecfdf5" : "white", cursor: "pointer" }}>
+                              Date: {dateStr} | start: {String(s.start_time).slice(0,5)} | end: {String(s.end_time).slice(0,5)} | hospital: {hosp}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label>Start Time * <small style={{ color: "#6b7280" }}>(24h)</small></label>
+                  <br />
+                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                    <select required value={parseHHMM(scheduleForm.start_time).h} onChange={(e) => updateScheduleTime("start_time", "h", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                      <option value="">HH</option>
+                      {HOURS.map((h) => (<option key={h} value={h}>{h}</option>))}
+                    </select>
+                    <span>:</span>
+                    <select required value={parseHHMM(scheduleForm.start_time).m} onChange={(e) => updateScheduleTime("start_time", "m", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                      <option value="">MM</option>
+                      {MINUTES.map((m) => (<option key={m} value={m}>{m}</option>))}
+                    </select>
+                    <small style={{ marginLeft: "4px", color: scheduleForm.start_time ? "#065f46" : "#9ca3af", fontWeight: "600" }}>{scheduleForm.start_time || "--:--"}</small>
+                  </div>
+                </div>
+                <div>
+                  <label>End Time * <small style={{ color: "#6b7280" }}>(24h)</small></label>
+                  <br />
+                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                    <select required value={parseHHMM(scheduleForm.end_time).h} onChange={(e) => updateScheduleTime("end_time", "h", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                      <option value="">HH</option>
+                      {HOURS.map((h) => (<option key={h} value={h}>{h}</option>))}
+                    </select>
+                    <span>:</span>
+                    <select required value={parseHHMM(scheduleForm.end_time).m} onChange={(e) => updateScheduleTime("end_time", "m", e.target.value)} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }}>
+                      <option value="">MM</option>
+                      {MINUTES.map((m) => (<option key={m} value={m}>{m}</option>))}
+                    </select>
+                    <small style={{ marginLeft: "4px", color: scheduleForm.end_time ? "#065f46" : "#9ca3af", fontWeight: "600" }}>{scheduleForm.end_time || "--:--"}</small>
+                  </div>
+                </div>
+                <div>
+                  <label>Hospital *</label>
+                  <br />
+                  <select required value={scheduleForm.hospital_id} onChange={(e)=>setScheduleForm(prev=>({...prev,hospital_id:e.target.value}))} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth:"180px" }}>
+                    <option value="">Select Hospital</option>
+                    {hospitals.map(h=>(<option key={h.hospital_id} value={h.hospital_id}>{h.hospital_name} - {h.city}</option>))}
+                  </select>
+                </div>
+                <button type="submit" disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Allowed only 12:55 PM - 6:00 PM" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
+                  {windowInfo?.isOpen ? "Add Slot" : "Closed"}
+                </button>
+              </form>
+              <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "8px" }}>End time must be after start time. Overlapping/duplicate slots are rejected. Hospital is required.</p>
+            </div>
+
+            {(() => {
+              const yearEnd = `${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`;
+              return (
+                <>
+                  <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "16px" }}>Use the <strong>📅 ▾</strong> icon next to the fixing date or the dropdown above to view your schedule list (Date | start | end | hospital) — same year from tomorrow to {yearEnd}. Window 12:55 PM–6:00 PM applies when fixing. Hospital is required.</p>
+                  {/* Minimal 4-column preview removed — dropdown above is the schedule list. No other UI shown. */}
+                </>
+              );
+            })()}
+          </section>
+        )}
 
         {/* =============================
             REFERRALS

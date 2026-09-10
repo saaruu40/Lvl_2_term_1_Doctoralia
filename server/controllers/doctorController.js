@@ -18,6 +18,28 @@ const applyDoctor = async (req, res) => {
       max_patient_num,
     } = req.body;
 
+    // BACKEND VALIDATION: department must exist (single source of truth)
+    if (!department_id) {
+      return res.status(400).json({
+        message: "Department is required. Please select a department.",
+      });
+    }
+    const deptIdNum = Number(department_id);
+    if (!Number.isInteger(deptIdNum) || deptIdNum <= 0) {
+      return res.status(400).json({
+        message: "Invalid department ID.",
+      });
+    }
+    const deptCheck = await pool.query(
+      `SELECT department_id FROM department WHERE department_id = $1`,
+      [deptIdNum]
+    );
+    if (deptCheck.rows.length === 0) {
+      return res.status(404).json({
+        message: "Selected department does not exist or has been deleted.",
+      });
+    }
+
     const existingDoctor = await pool.query(
       `SELECT doctor_id
        FROM doctor
@@ -64,7 +86,7 @@ const applyDoctor = async (req, res) => {
         email,
         approved_by`,
       [
-        department_id || null,
+        deptIdNum,
         full_name,
         email,
         hashedPassword,

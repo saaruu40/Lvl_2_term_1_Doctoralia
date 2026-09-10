@@ -1,0 +1,174 @@
+### Doctor Schedule Management API Tester
+### Base: http://localhost:5000
+### Auth: Bearer <doctorToken> required for all /api/doctors/schedules
+### Timezone: Asia/Dhaka, window 00:01-03:00 for following day
+
+### 1. Get schedule window status (any time, shows isOpen)
+GET http://localhost:5000/api/doctors/schedules/window
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+### 2. List my schedules (own only)
+GET http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+
+### 3. Create schedule - SUCCESS only if 00:01-03:00 and date is tomorrow (backend auto-targets tomorrow)
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "10:00",
+  "end_time": "11:00"
+}
+
+### 3b. Create with explicit tomorrow date (must equal tomorrow)
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "available_date": "2026-09-05",
+  "start_time": "10:00",
+  "end_time": "11:00"
+}
+
+### 4. Create overlapping - should 409
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "10:30",
+  "end_time": "11:30"
+}
+
+### 5. Create with invalid time - should 400
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "12:00",
+  "end_time": "11:00"
+}
+
+### 6. Create outside window - should 403 (test at 03:01 or 11:00 PM)
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "14:00",
+  "end_time": "15:00"
+}
+
+### 7. Create for wrong date - should 400
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "available_date": "2026-09-10",
+  "start_time": "10:00",
+  "end_time": "11:00"
+}
+
+### 8. Update own schedule - SUCCESS only within window and tomorrow
+PUT http://localhost:5000/api/doctors/schedules/1
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "09:00",
+  "end_time": "10:00"
+}
+
+### 9. Update to overlapping - should 409
+PUT http://localhost:5000/api/doctors/schedules/1
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "10:15",
+  "end_time": "11:15"
+}
+
+### 10. Toggle availability - allowed only in window, own slot, tomorrow
+PATCH http://localhost:5000/api/doctors/schedules/1/availability
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "slot_status": "unavailable"
+}
+
+### 11. Toggle back
+PATCH http://localhost:5000/api/doctors/schedules/1/availability
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "slot_status": "available"
+}
+
+### 12. Delete own tomorrow slot - allowed only in window
+DELETE http://localhost:5000/api/doctors/schedules/1
+Authorization: Bearer {{doctorToken}}
+
+### 13. Try to modify another doctor's slot - should 403
+PUT http://localhost:5000/api/doctors/schedules/999
+Authorization: Bearer {{doctorToken}}
+Content-Type: application/json
+
+{
+  "start_time": "10:00",
+  "end_time": "11:00"
+}
+
+### 14. Staff trying doctor schedule - should 403 (role)
+POST http://localhost:5000/api/doctors/schedules
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "start_time": "10:00",
+  "end_time": "11:00"
+}
+
+### 15. Staff view available slots (read-only, staff role)
+GET http://localhost:5000/api/staff/available-schedules?doctor_id=1
+Authorization: Bearer {{staffToken}}
+
+### 16. Staff assign slot to appointment (staff cannot create slot)
+PATCH http://localhost:5000/api/staff/appointments/1/schedule
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 17. Staff assign expired slot - should 400
+PATCH http://localhost:5000/api/staff/appointments/1/schedule
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "hospital_id": 1,
+  "schedule_id": 999
+}
+
+### 18. Patient view doctor available schedules
+GET http://localhost:5000/api/patients/doctors/1/schedules
+
+### 19. Patient payment with expired slot - should 400
+POST http://localhost:5000/api/patients/payments
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "appointment_id": 1,
+  "payment_method": "cash"
+}

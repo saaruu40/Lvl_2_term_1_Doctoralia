@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/DoctorAuth.css";
 
@@ -24,14 +24,29 @@ const DoctorRegistration = () => {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [deptLoading, setDeptLoading] = useState(true);
+  const [deptError, setDeptError] = useState("");
 
-  const departments = [
-    { department_id: 1, department_name: "Cardiology" },
-    { department_id: 2, department_name: "Neurology" },
-    { department_id: 3, department_name: "Dermatology" },
-    { department_id: 4, department_name: "Orthopedics" },
-    { department_id: 5, department_name: "Medicine" },
-  ];
+  // SINGLE SOURCE OF TRUTH: fetch departments from backend/database
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        setDeptLoading(true);
+        setDeptError("");
+        const res = await fetch("http://localhost:5000/api/departments");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Could not load departments.");
+        setDepartments(data.departments || []);
+      } catch (err) {
+        setDeptError(err.message);
+        setDepartments([]);
+      } finally {
+        setDeptLoading(false);
+      }
+    };
+    fetchDepartments();
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -160,24 +175,39 @@ const DoctorRegistration = () => {
 
             <div className="doctor-form-group">
               <label htmlFor="department_id">Department</label>
-              <select
-                id="department_id"
-                name="department_id"
-                value={formData.department_id}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select department</option>
-
-                {departments.map((department) => (
-                  <option
-                    key={department.department_id}
-                    value={department.department_id}
-                  >
-                    {department.department_name}
-                  </option>
-                ))}
-              </select>
+              {deptLoading ? (
+                <p style={{ fontSize: "0.85rem", color: "#666" }}>Loading departments...</p>
+              ) : departments.length === 0 ? (
+                <div>
+                  <p style={{ fontSize: "0.85rem", color: "#b00020", marginBottom: 6 }}>
+                    No departments are currently available. Please contact the administrator.
+                  </p>
+                  <select id="department_id" name="department_id" value={formData.department_id} disabled required>
+                    <option value="">No departments available</option>
+                  </select>
+                </div>
+              ) : (
+                <select
+                  id="department_id"
+                  name="department_id"
+                  value={formData.department_id}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option
+                      key={department.department_id}
+                      value={department.department_id}
+                    >
+                      {department.department_name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {deptError && (
+                <p style={{ fontSize: "0.8rem", color: "#b00020", marginTop: 4 }}>{deptError}</p>
+              )}
             </div>
 
             <div className="doctor-form-group">
@@ -310,7 +340,8 @@ const DoctorRegistration = () => {
           <button
             type="submit"
             className="doctor-submit-button"
-            disabled={loading}
+            disabled={loading || (!deptLoading && departments.length === 0)}
+            title={!deptLoading && departments.length === 0 ? "No departments available" : undefined}
           >
             {loading ? "Submitting Application..." : "Submit Application"}
           </button>

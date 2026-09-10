@@ -297,6 +297,24 @@ const getPatientDepartments = async (req, res) => {
     });
   }
 };
+const getDoctorAvailableSchedules = async (req, res) => {
+  try {
+    const doctorId = req.params.id;
+    const { isSlotExpired } = require("../utils/scheduleWindow");
+    const now = new Date();
+    const result = await pool.query(
+      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, h.hospital_name
+       FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id LEFT JOIN hospital h ON s.hospital_id=h.hospital_id
+       WHERE ds.doctor_id=$1 AND ds.status='AVAILABLE' ORDER BY s.available_date ASC, s.start_time ASC`,
+      [doctorId]
+    );
+    const available = result.rows.filter((s) => !isSlotExpired(s.available_date, s.end_time, now));
+    return res.status(200).json({ schedules: available });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch doctor schedules.", error: error.message });
+  }
+};
+
 const getDoctorDetails = async (req, res) => {
   try {
     const doctorId = req.params.id;
@@ -627,23 +645,33 @@ const makePayment = async (req, res) => {
       });
     }
 
-    // Appointment
+     // Appointment + schedule expired guard (M:N)
     const appointmentResult =
       await client.query(
         `SELECT
           a.appointment_id,
           a.patient_id,
           a.doctor_id,
+          a.schedule_id,
           a.appointment_status,
 
           d.new_patient_fee,
-          d.followup_fee
+          d.followup_fee,
+
+          s.available_date,
+          s.end_time,
+          ds.status as slot_status
 
          FROM appointment a
 
          JOIN doctor d
            ON a.doctor_id =
               d.doctor_id
+
+         LEFT JOIN schedule s
+           ON a.schedule_id = s.schedule_id
+         LEFT JOIN doctor_schedule ds
+           ON ds.schedule_id = s.schedule_id AND ds.doctor_id = a.doctor_id
 
          WHERE a.appointment_id = $1
 
@@ -687,6 +715,23 @@ const makePayment = async (req, res) => {
         message:
           "Staff must assign hospital and schedule before payment.",
       });
+    }
+
+    // === Expired slot guard (backend authority) M:N ===
+    if (appointment.schedule_id) {
+      if (appointment.slot_status === "UNAVAILABLE") {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "This slot is marked unavailable by the doctor." });
+      }
+      if (appointment.available_date && appointment.end_time) {
+        try {
+          const { isSlotExpired } = require("../utils/scheduleWindow");
+          if (isSlotExpired(appointment.available_date, appointment.end_time, new Date())) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ message: "This schedule slot is expired and cannot be paid/booked." });
+          }
+        } catch {}
+      }
     }
 
     // Already paid?
@@ -1429,6 +1474,7 @@ module.exports = {
     getApprovedDoctors,
   getPatientDepartments,
   getDoctorDetails,
+  getDoctorAvailableSchedules,
   getAvailableStaff,
 
   createAppointment,

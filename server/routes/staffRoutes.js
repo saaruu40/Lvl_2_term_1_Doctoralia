@@ -16,6 +16,7 @@ const {
   applyStaff,
 
   loginStaff,
+  getStaffRegistrationStatus,
 
   getStaffProfile,
 
@@ -26,6 +27,7 @@ const {
   getHospitals,
 
   scheduleAppointment,
+  getAvailableSchedules,
 
   getComplaintTargets,
 
@@ -172,6 +174,9 @@ const upload =
 // =====================================================
 
 
+// STAFF REGISTRATION STATUS (for UI banner: one-time registration)
+router.get("/status", getStaffRegistrationStatus);
+
 // STAFF REGISTRATION
 
 router.post(
@@ -264,13 +269,19 @@ router.get(
 );
 
 
-// ASSIGN HOSPITAL + DATE + TIME
-
+// ASSIGN HOSPITAL + PICK EXISTING DOCTOR SLOT (staff cannot create doctor schedules)
+// Staff only assigns hospital + existing available slot created by doctor
 router.patch(
 
   "/appointments/:id/schedule",
 
   scheduleAppointment
+);
+
+// VIEW AVAILABLE SLOTS FOR A DOCTOR (read-only, staff cannot modify)
+router.get(
+  "/available-schedules",
+  getAvailableSchedules
 );
 
 

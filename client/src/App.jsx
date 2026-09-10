@@ -122,20 +122,20 @@ function App() {
 
       <Routes>
 
-        {/* DEFAULT */}
+        {/* DEFAULT - admin registration disabled, only one admin (sara) */}
 
         <Route
           path="/"
           element={
             <Navigate
-              to="/register"
+              to="/login"
               replace
             />
           }
         />
 
 
-        {/* ADMIN */}
+        {/* ADMIN - registration disabled singleton */}
 
         <Route
           path="/register"
@@ -213,7 +213,7 @@ function App() {
           path="*"
           element={
             <Navigate
-              to="/register"
+              to="/login"
               replace
             />
           }

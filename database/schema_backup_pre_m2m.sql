@@ -1,6 +1,5 @@
--- Doctoralia Database Schema
--- Based on the provided Entity-Attribute List.
--- PostgreSQL
+
+
 
 CREATE TABLE IF NOT EXISTS admin (
     admin_id SERIAL PRIMARY KEY,
@@ -13,12 +12,7 @@ CREATE TABLE IF NOT EXISTS admin (
 CREATE TABLE IF NOT EXISTS department (
     department_id SERIAL PRIMARY KEY,
     department_name VARCHAR(100),
-    description TEXT,
-    created_by INTEGER,
-
-    CONSTRAINT fk_department_created_by
-        FOREIGN KEY (created_by)
-        REFERENCES admin(admin_id)
+    description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS patient (
@@ -103,84 +97,21 @@ CREATE TABLE IF NOT EXISTS doctor (
 
 CREATE TABLE IF NOT EXISTS schedule (
     schedule_id SERIAL PRIMARY KEY,
+    doctor_id INTEGER,
     available_date DATE,
     start_time TIME,
     end_time TIME,
-    hospital_id INTEGER,
+    slot_status VARCHAR(50) DEFAULT 'available',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_schedule_hospital
-        FOREIGN KEY (hospital_id)
-        REFERENCES hospital(hospital_id)
-);
-
-CREATE TABLE IF NOT EXISTS doctor_schedule (
-    doctor_id INTEGER NOT NULL,
-    schedule_id INTEGER NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('AVAILABLE','WORKING','UNAVAILABLE')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    PRIMARY KEY (doctor_id, schedule_id),
-
-    CONSTRAINT fk_doctor_schedule_doctor
+    CONSTRAINT fk_schedule_doctor
         FOREIGN KEY (doctor_id)
-        REFERENCES doctor(doctor_id) ON DELETE CASCADE,
-
-    CONSTRAINT fk_doctor_schedule_schedule
-        FOREIGN KEY (schedule_id)
-        REFERENCES schedule(schedule_id) ON DELETE CASCADE
+        REFERENCES doctor(doctor_id)
 );
 
--- Migration for existing DBs that still have old columns (safe, no-op if already migrated) - FIXED for zero loss
-DO $$ BEGIN
-  -- If old schedule still has doctor_id, migrate to junction with UPPER mapping (booked->WORKING)
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='doctor_id') THEN
-    INSERT INTO doctor_schedule (doctor_id, schedule_id, status)
-    SELECT doctor_id, schedule_id,
-      CASE UPPER(TRIM(COALESCE(NULLIF(slot_status,''),'UNAVAILABLE')))
-        WHEN 'AVAILABLE' THEN 'AVAILABLE'
-        WHEN 'BOOKED' THEN 'WORKING'
-        WHEN 'WORKING' THEN 'WORKING'
-        WHEN 'UNAVAILABLE' THEN 'UNAVAILABLE'
-        ELSE 'UNAVAILABLE'
-      END
-    FROM schedule WHERE doctor_id IS NOT NULL
-    ON CONFLICT DO NOTHING;
-    ALTER TABLE schedule DROP CONSTRAINT IF EXISTS fk_schedule_doctor;
-    ALTER TABLE schedule DROP CONSTRAINT IF EXISTS idx_schedule_doctor_date;
-    ALTER TABLE schedule DROP CONSTRAINT IF EXISTS idx_schedule_doctor_date_time;
-    ALTER TABLE schedule DROP COLUMN IF EXISTS doctor_id;
-  END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='slot_status') THEN
-    ALTER TABLE schedule DROP COLUMN IF EXISTS slot_status;
-  END IF;
-  -- hospital_id already added via CREATE TABLE above, ensure FK
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='hospital_id') THEN
-    ALTER TABLE schedule ADD COLUMN hospital_id INTEGER REFERENCES hospital(hospital_id);
-  END IF;
-  -- Ensure created_at/updated_at exist (additive, not dropping)
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='created_at') THEN
-    ALTER TABLE schedule ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='schedule' AND column_name='updated_at') THEN
-    ALTER TABLE schedule ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-  END IF;
-  -- referral: keep both appointment_id and patient_id for zero loss
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='referral' AND column_name='patient_id') THEN
-    ALTER TABLE referral ADD COLUMN patient_id INTEGER REFERENCES patient(patient_id);
-  END IF;
-  -- backfill patient_id from appointment where possible
-  BEGIN
-    UPDATE referral r SET patient_id = a.patient_id FROM appointment a WHERE r.appointment_id = a.appointment_id AND r.patient_id IS NULL;
-  EXCEPTION WHEN OTHERS THEN NULL;
-  END;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_schedule_date ON schedule(available_date);
-CREATE INDEX IF NOT EXISTS idx_schedule_hospital ON schedule(hospital_id);
-CREATE INDEX IF NOT EXISTS idx_doctor_schedule_doctor ON doctor_schedule(doctor_id);
-CREATE INDEX IF NOT EXISTS idx_doctor_schedule_schedule ON doctor_schedule(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_doctor_date ON schedule(doctor_id, available_date);
+CREATE INDEX IF NOT EXISTS idx_schedule_doctor_date_time ON schedule(doctor_id, available_date, start_time, end_time);
 
 CREATE TABLE IF NOT EXISTS appointment (
     appointment_id SERIAL PRIMARY KEY,
@@ -338,19 +269,22 @@ CREATE TABLE IF NOT EXISTS complaint (
  
 );
 
-CREATE TABLE IF NOT EXISTS referral (
+CREATE TABLE referral (
     referral_id SERIAL PRIMARY KEY,
-    patient_id INTEGER,
-    appointment_id INTEGER,
-    referred_by INTEGER,
-    referred_to INTEGER,
-    reason TEXT,
-    referral_status VARCHAR(50),
-    referral_date DATE,
 
-    CONSTRAINT fk_referral_patient
-        FOREIGN KEY (patient_id)
-        REFERENCES patient(patient_id),
+    appointment_id INTEGER NOT NULL UNIQUE,
+
+    referred_by INTEGER NOT NULL,
+
+    referred_to INTEGER NOT NULL,
+
+    reason TEXT,
+
+    referral_status VARCHAR(50)
+        DEFAULT 'pending',
+
+    referral_date DATE
+        DEFAULT CURRENT_DATE,
 
     CONSTRAINT fk_referral_appointment
         FOREIGN KEY (appointment_id)

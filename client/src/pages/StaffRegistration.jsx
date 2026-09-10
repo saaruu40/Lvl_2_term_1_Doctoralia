@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/DoctorAuth.css";
 
@@ -17,6 +17,29 @@ const StaffRegistration = () => {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [closed, setClosed] = useState(false);
+  const [closedMsg, setClosedMsg] = useState("");
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/staff/status");
+        const data = await res.json();
+        if (data.closed) {
+          setClosed(true);
+          setClosedMsg(data.message);
+          setMessage(data.message);
+          setMessageType("error");
+        }
+      } catch (e) {
+        // ignore status fetch error, allow form
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkStatus();
+  }, []);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -64,6 +87,10 @@ const StaffRegistration = () => {
       const result = await response.json();
 
       if (!response.ok) {
+        if (result.closed || response.status === 403) {
+          setClosed(true);
+          setClosedMsg(result.message);
+        }
         throw new Error(result.message || "Application can't be sent");
       }
 
@@ -83,19 +110,34 @@ const StaffRegistration = () => {
     }
   };
 
+  if (checking) {
+    return (
+      <div className="doctor-auth-page">
+        <div className="doctor-register-card"><p>Checking registration status...</p></div>
+      </div>
+    );
+  }
+
   return (
     <div className="doctor-auth-page">
       <div className="doctor-register-card">
         <div className="doctor-auth-header">
           <h1>Staff Application</h1>
           <p>
-            Apply giving proper information. Your account will activate after
-            admin approval
+            {closed
+              ? closedMsg || "Staff registration is closed. Only one staff is allowed."
+              : "Apply giving proper information. Your account will activate after admin approval"}
           </p>
         </div>
 
         {message && (
           <div className={`doctor-message ${messageType}`}>{message}</div>
+        )}
+
+        {closed && (
+          <div className="doctor-message error" style={{ marginBottom: 12 }}>
+            Staff registration is closed. Only one staff registration is allowed and has already been taken. Please contact admin.
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="doctor-form">
@@ -185,9 +227,10 @@ const StaffRegistration = () => {
           <button
             type="submit"
             className="doctor-submit-button"
-            disabled={loading}
+            disabled={loading || closed}
+            title={closed ? "Registration closed" : undefined}
           >
-            {loading ? "Submitting Application..." : "Submit Application"}
+            {closed ? "Registration Closed" : loading ? "Submitting Application..." : "Submit Application"}
           </button>
         </form>
 

@@ -5,6 +5,7 @@ const roleMiddleware = require("../middleware/roleMiddleware");
 const {
   registerAdmin,
   loginAdmin,
+  getAdminRegistrationStatus,
 
   getAdminProfile,
   getDashboardStats,
@@ -37,6 +38,7 @@ const router = express.Router();
 // Authentication
 router.post("/register", registerAdmin);
 router.post("/login", loginAdmin);
+router.get("/status", getAdminRegistrationStatus);
 
 
 // Admin

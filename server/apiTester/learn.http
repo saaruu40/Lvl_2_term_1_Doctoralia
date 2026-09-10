@@ -1,0 +1,52 @@
+@base = http://localhost:5000
+
+### 1. Health - no DB
+GET {{base}}/api/learn/health
+
+### 2. SELECT with optional search (like departmentController)
+GET {{base}}/api/learn/select
+###
+GET {{base}}/api/learn/select?search=Cardio
+
+### 3. INSERT - try duplicate to see 409
+POST {{base}}/api/learn/insert
+Content-Type: application/json
+
+{
+  "department_name": "LearnTestDept",
+  "description": "from learn API"
+}
+
+### 4. INSERT duplicate should 409
+POST {{base}}/api/learn/insert
+Content-Type: application/json
+
+{
+  "department_name": "LearnTestDept",
+  "description": "duplicate"
+}
+
+### 5. UPDATE
+PUT {{base}}/api/learn/update/1
+Content-Type: application/json
+
+{
+  "description": "updated via learn API"
+}
+
+### 6. Transaction - create appointment atomically (needs patient 1, doctor 2 from your DB)
+POST {{base}}/api/learn/transaction
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "doctor_id": 2
+}
+
+### 7. DELETE - will fail if doctors use it (409), else ok
+DELETE {{base}}/api/learn/delete/999
+
+### 8. Existing test-db (already in server.js)
+GET {{base}}/api/test-db
+### 9. Root
+GET {{base}}/

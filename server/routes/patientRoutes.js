@@ -13,6 +13,7 @@ const {
   getApprovedDoctors,
   getPatientDepartments,
   getDoctorDetails,
+  getDoctorAvailableSchedules,
   getAvailableStaff,
 
   createAppointment,
@@ -66,6 +67,11 @@ router.get(
 router.get(
   "/doctors/:id",
   getDoctorDetails
+);
+
+router.get(
+  "/doctors/:id/schedules",
+  getDoctorAvailableSchedules
 );
 
 

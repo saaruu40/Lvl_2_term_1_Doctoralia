@@ -1,13 +1,17 @@
 const pool = require("../config/db");
 
-// GET all departments
+// GET all departments (supports ?search= for Admin search bar)
 const getDepartments = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT department_id, department_name, description
-       FROM department
-       ORDER BY department_id`
-    );
+    const { search } = req.query;
+    let query = `SELECT department_id, department_name, description FROM department`;
+    const values = [];
+    if (search && search.trim()) {
+      query += ` WHERE LOWER(department_name) LIKE LOWER($1)`;
+      values.push(`%${search.trim()}%`);
+    }
+    query += ` ORDER BY department_id`;
+    const result = await pool.query(query, values);
 
     return res.status(200).json({
       message: "Departments fetched successfully.",
@@ -102,11 +106,18 @@ const createDepartment = async (req, res) => {
   }
 };
 
-// UPDATE department
+// UPDATE department (rename — preserves department_id FK, blocks duplicate)
 const updateDepartment = async (req, res) => {
   try {
     const { id } = req.params;
     const { department_name, description } = req.body;
+    if (department_name) {
+      const dup = await pool.query(
+        `SELECT department_id FROM department WHERE LOWER(department_name)=LOWER($1) AND department_id<>$2`,
+        [department_name.trim(), id]
+      );
+      if (dup.rows.length > 0) return res.status(409).json({ message: "Department already exists." });
+    }
 
     const result = await pool.query(
       `UPDATE department
@@ -116,7 +127,7 @@ const updateDepartment = async (req, res) => {
        WHERE department_id = $3
        RETURNING department_id, department_name, description`,
       [
-        department_name || null,
+        department_name ? department_name.trim() : null,
         description ?? null,
         id,
       ]
@@ -142,10 +153,15 @@ const updateDepartment = async (req, res) => {
   }
 };
 
-// DELETE department
+// DELETE department — blocked if any doctor assigned (FK safety)
 const deleteDepartment = async (req, res) => {
   try {
     const { id } = req.params;
+
+    const docCheck = await pool.query(`SELECT COUNT(*) FROM doctor WHERE department_id=$1`, [id]);
+    if (Number(docCheck.rows[0].count) > 0) {
+      return res.status(409).json({ message: "This department cannot be deleted because doctors are currently assigned to it. Doctor exists in this department." });
+    }
 
     const result = await pool.query(
       `DELETE FROM department

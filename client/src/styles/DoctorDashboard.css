@@ -151,7 +151,7 @@
 
 
 /* =====================================================
-   MESSAGE
+   MESSAGE - fixed to not expand incorrectly, handles long messages
 ===================================================== */
 
 .doctor-message {
@@ -169,6 +169,27 @@
   color: #065f46;
 
   font-weight: 500;
+
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.doctor-message.success {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  border-left-color: #10b981;
+  color: #065f46;
+}
+
+.doctor-message.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  border-left-color: #ef4444;
+  color: #991b1b;
 }
 
 

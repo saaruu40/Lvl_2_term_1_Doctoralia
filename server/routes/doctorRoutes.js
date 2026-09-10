@@ -90,6 +90,16 @@ const {
 
 } = require("../controllers/doctorController");
 
+const {
+  getWindowInfo,
+  getHospitals,
+  getMySchedules,
+  createSchedule,
+  updateSchedule,
+  deleteSchedule,
+  updateAvailability,
+} = require("../controllers/doctorScheduleController");
+
 
 const router = express.Router();
 
@@ -356,6 +366,26 @@ router.get(
   "/complaints",
   getDoctorComplaints
 );
+
+
+// =====================================================
+// SCHEDULE MANAGEMENT (Doctor owns own schedules)
+// Window: 00:01-03:00 for following day only
+// =====================================================
+
+router.get("/hospitals", getHospitals);
+
+router.get("/schedules/window", getWindowInfo);
+
+router.get("/schedules", getMySchedules);
+
+router.post("/schedules", createSchedule);
+
+router.put("/schedules/:id", updateSchedule);
+
+router.delete("/schedules/:id", deleteSchedule);
+
+router.patch("/schedules/:id/availability", updateAvailability);
 
 
 // =====================================================

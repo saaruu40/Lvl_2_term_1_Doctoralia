@@ -30,10 +30,9 @@ function StaffDashboard() {
 
   const [scheduleForm, setScheduleForm] = useState({
     hospital_id: "",
-    available_date: "",
-    start_time: "",
-    end_time: "",
+    schedule_id: "",
   });
+  const [availableSlots, setAvailableSlots] = useState([]);
 
   const [complaintForm, setComplaintForm] = useState({
     against_type: "patient",
@@ -197,23 +196,24 @@ function StaffDashboard() {
     loadEverything();
   }, []);
 
-  const openScheduleForm = (appointment) => {
-    setSelectedAppointment(appointment);
+  const loadAvailableSlots = async (doctorId) => {
+    try {
+      const res = await authFetch(`${API}/available-schedules?doctor_id=${doctorId}`);
+      const data = await res.json();
+      if (res.ok) setAvailableSlots(data.schedules || []);
+      else setAvailableSlots([]);
+    } catch {
+      setAvailableSlots([]);
+    }
+  };
 
+  const openScheduleForm = async (appointment) => {
+    setSelectedAppointment(appointment);
     setScheduleForm({
-      hospital_id: appointment.hospital_id
-        ? String(appointment.hospital_id)
-        : "",
-      available_date: appointment.available_date
-        ? String(appointment.available_date).split("T")[0]
-        : "",
-      start_time: appointment.start_time
-        ? String(appointment.start_time).slice(0, 5)
-        : "",
-      end_time: appointment.end_time
-        ? String(appointment.end_time).slice(0, 5)
-        : "",
+      hospital_id: appointment.hospital_id ? String(appointment.hospital_id) : "",
+      schedule_id: appointment.schedule_id ? String(appointment.schedule_id) : "",
     });
+    if (appointment.doctor_id) await loadAvailableSlots(appointment.doctor_id);
   };
 
   const submitSchedule = async (event) => {
@@ -501,8 +501,11 @@ function StaffDashboard() {
                     <strong>Doctor:</strong> Dr. {selectedAppointment.doctor_name}
                   </p>
 
+                  <p style={{ background: "#fffbeb", border: "1px solid #fcd34d", padding: "10px", borderRadius: "6px", fontSize: "13px" }}>
+                    <strong>Note:</strong> Staff cannot create doctor schedules. Doctor must create slots between <strong>12:01 AM - 3:00 AM</strong> for tomorrow. You only assign hospital + pick an available slot.
+                  </p>
                   <form className="staff-form" onSubmit={submitSchedule}>
-                    <label htmlFor="hospital_id">Hospital</label>
+                    <label htmlFor="hospital_id">Hospital *</label>
                     <select
                       id="hospital_id"
                       value={scheduleForm.hospital_id}
@@ -525,58 +528,37 @@ function StaffDashboard() {
                       ))}
                     </select>
 
-                    <label htmlFor="available_date">Appointment Date</label>
-                    <input
-                      id="available_date"
-                      type="date"
-                      value={scheduleForm.available_date}
+                    <label htmlFor="schedule_id">Available Doctor Slot *</label>
+                    <select
+                      id="schedule_id"
+                      value={scheduleForm.schedule_id}
                       onChange={(event) =>
                         setScheduleForm({
                           ...scheduleForm,
-                          available_date: event.target.value,
+                          schedule_id: event.target.value,
                         })
                       }
                       required
-                    />
-
-                    <div className="staff-time-grid">
-                      <div>
-                        <label htmlFor="start_time">Start Time</label>
-                        <input
-                          id="start_time"
-                          type="time"
-                          value={scheduleForm.start_time}
-                          onChange={(event) =>
-                            setScheduleForm({
-                              ...scheduleForm,
-                              start_time: event.target.value,
-                            })
-                          }
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="end_time">End Time</label>
-                        <input
-                          id="end_time"
-                          type="time"
-                          value={scheduleForm.end_time}
-                          onChange={(event) =>
-                            setScheduleForm({
-                              ...scheduleForm,
-                              end_time: event.target.value,
-                            })
-                          }
-                          required
-                        />
-                      </div>
-                    </div>
+                    >
+                      <option value="">Select slot</option>
+                      {availableSlots.length === 0 ? (
+                        <option disabled>No available slots for this doctor - ask doctor to create between 12:01-03:00</option>
+                      ) : (
+                        availableSlots.map((slot) => (
+                          <option key={slot.schedule_id} value={slot.schedule_id}>
+                            {String(slot.available_date).split("T")[0]} {String(slot.start_time).slice(0,5)}-{String(slot.end_time).slice(0,5)} {slot.hospital_name?`@ ${slot.hospital_name}`:''} ({slot.slot_status})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {availableSlots.length > 0 && (
+                      <p style={{ fontSize: "12px", color: "#6b7280" }}>Showing {availableSlots.length} available slot(s). Expired/unavailable/booked are hidden.</p>
+                    )}
 
                     <button
                       className="staff-primary-button staff-full-button"
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || availableSlots.length === 0}
                     >
                       {loading ? "Saving..." : "Save Schedule"}
                     </button>
