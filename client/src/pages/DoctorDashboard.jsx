@@ -192,6 +192,38 @@ function DoctorDashboard() {
   const [selectedScheduleId, setSelectedScheduleId] = useState("");
   const [showNextDayDropdown, setShowNextDayDropdown] = useState(false);
 
+  // My Staff + Available Staff (Req 3-6,22-27)
+  const [myStaff, setMyStaff] = useState({ primary: null, temporary: null });
+  const [availableStaff, setAvailableStaff] = useState([]);
+
+  const loadMyStaff = async () => {
+    try {
+      const res = await authFetch(`${API}/my-staff`);
+      const data = await res.json();
+      if (res.ok) setMyStaff({ primary: data.primary || null, temporary: data.temporary || null });
+    } catch {}
+  };
+  const loadAvailableStaff = async () => {
+    try {
+      const res = await authFetch(`${API}/available-staff`);
+      const data = await res.json();
+      if (res.ok) setAvailableStaff(data.staff || []);
+    } catch {}
+  };
+  const handleAssignStaff = async (staffId) => {
+    try {
+      const res = await authFetch(`${API}/assign-staff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staff_id: staffId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not assign staff.");
+      showMessage(data.message, "success");
+      await Promise.all([loadMyStaff(), loadAvailableStaff()]);
+    } catch (e) { showMessage(e.message, "error"); }
+  };
+
   // Schedule dropdown: load authenticated doctor's NEXT-DAY schedules, select to fix/edit (window-gated)
   const handleScheduleDropdownChange = (e) => {
     const val = e.target.value;
@@ -350,6 +382,8 @@ function DoctorDashboard() {
     loadWindowInfo();
     loadSchedules();
     loadHospitals();
+    loadMyStaff();
+    loadAvailableStaff();
 
   }, [doctor?.doctor_id]);
 
@@ -608,16 +642,18 @@ function DoctorDashboard() {
   };
 
 
+  const [appointmentScheduleFilter, setAppointmentScheduleFilter] = useState("");
+
   // =====================================================
   // APPOINTMENTS
   // =====================================================
 
-  const loadAppointments = async () => {
+  const loadAppointments = async (scheduleId = null) => {
     try {
-
+      const url = scheduleId ? `${API}/appointments?schedule_id=${scheduleId}` : `${API}/appointments`;
       const response =
         await authFetch(
-          `${API}/appointments`
+          url
         );
 
 
@@ -1468,6 +1504,16 @@ function DoctorDashboard() {
           My Schedules
         </button>
 
+        <button
+          onClick={() => {
+            setSection("my-staff");
+            loadMyStaff();
+            loadAvailableStaff();
+          }}
+        >
+          My Staff
+        </button>
+
 
         <button
           onClick={() =>
@@ -1633,14 +1679,40 @@ function DoctorDashboard() {
               My Appointments
             </h1>
 
+            <div style={{ background: "white", padding: "12px", borderRadius: "8px", border: "1px solid #e5e7eb", marginBottom: "12px" }}>
+              <label style={{ fontWeight: 600 }}>Select Schedule:</label>{" "}
+              <select
+                value={appointmentScheduleFilter}
+                onChange={async (e) => {
+                  const val = e.target.value;
+                  setAppointmentScheduleFilter(val);
+                  await loadAppointments(val || null);
+                }}
+                style={{ padding: "8px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "280px", marginLeft: "8px" }}
+              >
+                <option value="">-- All Schedules --</option>
+                {schedules.map((s) => {
+                  const dateStr = String(s.available_date).split("T")[0];
+                  // Format 10 Sep 2026 | 10:00 AM - 11:00 AM
+                  const fmt = (t) => {
+                    const [h,m] = String(t).slice(0,5).split(":").map(Number);
+                    const ampm = h >= 12 ? "PM" : "AM";
+                    const h12 = h % 12 === 0 ? 12 : h % 12;
+                    return `${String(h12).padStart(2,"0")}:${String(m).padStart(2,"0")} ${ampm}`;
+                  };
+                  return (
+                    <option key={s.schedule_id} value={s.schedule_id}>
+                      {dateStr} | {fmt(s.start_time)} - {fmt(s.end_time)}
+                    </option>
+                  );
+                })}
+              </select>
+              {appointmentScheduleFilter && <button onClick={async()=>{ setAppointmentScheduleFilter(""); await loadAppointments(null); }} style={{ marginLeft:"8px", padding:"6px 10px", border:"1px solid #d1d5db", borderRadius:"6px", cursor:"pointer" }}>Clear</button>}
+            </div>
 
             {appointments.length ===
             0 ? (
-
-              <p>
-                No appointments found.
-              </p>
-
+              <p>{appointmentScheduleFilter ? "No appointments for this schedule." : "No appointments found."}</p>
             ) : (
 
               <div className="doctor-appointment-list">
@@ -2051,6 +2123,49 @@ function DoctorDashboard() {
                 </>
               );
             })()}
+          </section>
+        )}
+
+        {section === "my-staff" && (
+          <section>
+            <h1>My Staff</h1>
+            <div style={{ background: "white", padding: "16px", borderRadius: "12px", border: "1px solid #e5e7eb", marginBottom: "16px" }}>
+              <h3>Primary Staff</h3>
+              {myStaff.primary ? (
+                <>
+                  <p><strong>Staff:</strong> {myStaff.primary.email} (ID #{myStaff.primary.staff_id}, {myStaff.primary.gender})</p>
+                  <p><strong>Status:</strong> {myStaff.primary.is_suspended ? <span style={{color:"red", fontWeight:600}}>Suspended until {new Date(myStaff.primary.suspended_until).toLocaleString()}</span> : <span style={{color:"green", fontWeight:600}}>Active</span>}</p>
+                </>
+              ) : (
+                <p style={{ color: "#6b7280" }}>No Primary Staff assigned.</p>
+              )}
+              <h3 style={{ marginTop: "14px" }}>Temporary Replacement</h3>
+              {myStaff.temporary ? (
+                <>
+                  <p><strong>Staff:</strong> {myStaff.temporary.email} (ID #{myStaff.temporary.staff_id})</p>
+                  <p><strong>Status:</strong> <span style={{color:"green", fontWeight:600}}>Active</span></p>
+                  {myStaff.temporary.end_date && <p><strong>Valid Until:</strong> {new Date(myStaff.temporary.end_date).toLocaleString()}</p>}
+                </>
+              ) : (
+                <p style={{ color: "#6b7280" }}>{myStaff.primary && myStaff.primary.is_suspended ? "No temporary yet. Choose from available staff below." : "No Temporary Staff."}</p>
+              )}
+              <button onClick={() => { loadMyStaff(); loadAvailableStaff(); }} style={{ marginTop: "10px", padding: "8px 12px", background: "#e5e7eb", border: "none", borderRadius: "6px", cursor:"pointer" }}>Refresh</button>
+            </div>
+
+            <div style={{ background: "white", padding: "16px", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
+              <h3>Find Available Staff</h3>
+              {availableStaff.length === 0 ? (
+                <p style={{ color: "#6b7280" }}>No available staff right now.</p>
+              ) : (
+                availableStaff.map(s => (
+                  <div key={s.staff_id} style={{ display: "flex", justifyContent: "space-between", alignItems:"center", padding:"10px", borderBottom:"1px solid #f3f4f6" }}>
+                    <span>{s.email} ({s.gender}) - ID #{s.staff_id}</span>
+                    <button onClick={() => handleAssignStaff(s.staff_id)} style={{ padding:"7px 12px", background:"#0f766e", color:"white", border:"none", borderRadius:"6px", cursor:"pointer" }}>Assign</button>
+                  </div>
+                ))
+              )}
+              <p style={{fontSize:"12px", color:"#6b7280", marginTop:"8px"}}>Only approved, not suspended, not assigned staff are shown. Backend enforces all checks.</p>
+            </div>
           </section>
         )}
 

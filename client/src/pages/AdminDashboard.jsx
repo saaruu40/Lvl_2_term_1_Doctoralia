@@ -41,6 +41,10 @@ function AdminDashboard() {
   const [pendingStaff, setPendingStaff] =
     useState([]);
 
+  const [approvedStaff, setApprovedStaff] = useState([]);
+  const [suspendedStaff, setSuspendedStaff] = useState([]);
+  const [availableStaff, setAvailableStaff] = useState([]);
+
   const [doctorHistory, setDoctorHistory] =
     useState([]);
 
@@ -93,6 +97,9 @@ function AdminDashboard() {
       loadStats(),
       loadPendingDoctors(),
       loadPendingStaff(),
+      loadApprovedStaff(),
+      loadSuspendedStaff(),
+      loadAvailableStaff(),
       loadDoctorHistory(),
       loadStaffHistory(),
       loadDepartments(),
@@ -153,6 +160,28 @@ function AdminDashboard() {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const loadApprovedStaff = async () => {
+    try {
+      const res = await authFetch(`${API}/staff/approved`);
+      const data = await res.json();
+      if (res.ok) setApprovedStaff(data.staff || []);
+    } catch {}
+  };
+  const loadSuspendedStaff = async () => {
+    try {
+      const res = await authFetch(`${API}/staff/suspended`);
+      const data = await res.json();
+      if (res.ok) setSuspendedStaff(data.staff || []);
+    } catch {}
+  };
+  const loadAvailableStaff = async () => {
+    try {
+      const res = await authFetch(`${API}/staff/available`);
+      const data = await res.json();
+      if (res.ok) setAvailableStaff(data.staff || []);
+    } catch {}
   };
 
 
@@ -318,6 +347,9 @@ function AdminDashboard() {
       setMessage(data.message);
 
       await loadPendingStaff();
+      await loadApprovedStaff();
+      await loadSuspendedStaff();
+      await loadAvailableStaff();
       await loadStaffHistory();
       await loadStats();
 
@@ -363,7 +395,7 @@ function AdminDashboard() {
 
       setMessage(data.message);
 
-      await loadComplaints();
+      await Promise.all([loadComplaints(), loadApprovedStaff(), loadSuspendedStaff(), loadAvailableStaff(), loadStats()]);
 
     } catch (error) {
       setMessage(error.message);
@@ -992,6 +1024,42 @@ function AdminDashboard() {
               </div>
 
             )}
+
+            <div style={{ marginTop:"20px", background:"white", padding:"16px", borderRadius:"10px", border:"1px solid #e5e7eb" }}>
+              <h3>Approved Staff {approvedStaff.length ? `(${approvedStaff.length})` : ""}</h3>
+              {approvedStaff.length===0 ? <p>No approved staff.</p> : (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:"12px", marginTop:"10px" }}>
+                  {approvedStaff.map(s=> (
+                    <div key={s.staff_id} style={{ border:"1px solid #e5e7eb", padding:"10px", borderRadius:"8px" }}>
+                      <p><strong>#{s.staff_id} {s.email}</strong></p>
+                      <p style={{fontSize:"13px"}}>Phone: {s.phone_number} | {s.gender}</p>
+                      <p style={{fontSize:"13px"}}>Assigned: {s.assignment_id ? `Dr. ${s.assigned_doctor_name} (${s.assignment_type})` : "Not assigned"}</p>
+                      <p style={{fontSize:"13px"}}>Available: {s.is_available ? <span style={{color:"green"}}>YES</span> : <span style={{color:"red"}}>NO</span>} {s.is_suspended ? "(Suspended)" : ""}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ marginTop:"16px", background:"white", padding:"16px", borderRadius:"10px", border:"1px solid #e5e7eb" }}>
+              <h3>Suspended Staff {suspendedStaff.length ? `(${suspendedStaff.length})` : ""}</h3>
+              {suspendedStaff.length===0 ? <p>No suspended staff.</p> : (
+                suspendedStaff.map(s=> (
+                  <div key={s.staff_id} style={{ padding:"8px", borderBottom:"1px solid #f3f4f6" }}>
+                    <strong>#{s.staff_id} {s.email}</strong> - until {new Date(s.suspended_until).toLocaleString()}
+                  </div>
+                ))
+              )}
+            </div>
+            <div style={{ marginTop:"16px", background:"white", padding:"16px", borderRadius:"10px", border:"1px solid #e5e7eb" }}>
+              <h3>Available Staff {availableStaff.length ? `(${availableStaff.length})` : ""}</h3>
+              {availableStaff.length===0 ? <p>No available staff.</p> : (
+                availableStaff.map(s=> (
+                  <div key={s.staff_id} style={{ padding:"8px", borderBottom:"1px solid #f3f4f6" }}>
+                    #{s.staff_id} {s.email} ({s.gender}) - {s.phone_number}
+                  </div>
+                ))
+              )}
+            </div>
 
           </section>
         )}

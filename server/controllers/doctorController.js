@@ -641,86 +641,69 @@ const getDoctorAppointments = async (req, res) => {
 
 
     // =====================================
-    // GET THIS DOCTOR'S APPOINTMENTS
+    // GET THIS DOCTOR'S APPOINTMENTS - with optional schedule_id filter
     // =====================================
+    const filterScheduleId = req.query.schedule_id ? Number(req.query.schedule_id) : null;
+    if (filterScheduleId) {
+      // Verify schedule belongs to this doctor
+      const ownerCheck = await pool.query(
+        `SELECT 1 FROM doctor_schedule WHERE doctor_id=$1 AND schedule_id=$2`,
+        [doctorId, filterScheduleId]
+      );
+      if (ownerCheck.rows.length === 0) {
+        return res.status(403).json({ message: "You are not authorized to view this schedule's appointments." });
+      }
+    }
 
-    const result = await pool.query(
-      `SELECT
-
+    let query = `SELECT
         a.appointment_id,
         a.patient_id,
         a.booking_date,
         a.appointment_status,
-
         p.full_name AS patient_name,
         p.email AS patient_email,
         p.phone_number AS patient_phone,
         p.gender AS patient_gender,
         p.date_of_birth,
         p.blood_group,
-
         h.hospital_id,
         h.hospital_name,
         h.city,
         h.address AS hospital_address,
-
         s.schedule_id,
         s.available_date,
         s.start_time,
         s.end_time,
-
         pay.payment_id,
         pay.amount,
         pay.payment_method,
         pay.payment_status,
         pay.payment_date,
-
         pr.prescription_id,
-
         r.referral_id
-
        FROM appointment a
-
-       JOIN patient p
-         ON a.patient_id = p.patient_id
-
-       LEFT JOIN hospital h
-         ON a.hospital_id = h.hospital_id
-
-       LEFT JOIN schedule s
-         ON a.schedule_id = s.schedule_id
-
-       LEFT JOIN payment pay
-         ON a.appointment_id = pay.appointment_id
-
-       LEFT JOIN prescription pr
-         ON a.appointment_id = pr.appointment_id
-
-       LEFT JOIN referral r
-         ON a.appointment_id = r.appointment_id
-
-       WHERE a.doctor_id = $1
-
-       ORDER BY
+       JOIN patient p ON a.patient_id = p.patient_id
+       LEFT JOIN hospital h ON a.hospital_id = h.hospital_id
+       LEFT JOIN schedule s ON a.schedule_id = s.schedule_id
+       LEFT JOIN payment pay ON a.appointment_id = pay.appointment_id
+       LEFT JOIN prescription pr ON a.appointment_id = pr.appointment_id
+       LEFT JOIN referral r ON a.appointment_id = r.appointment_id
+       WHERE a.doctor_id = $1`;
+    const params = [doctorId];
+    if (filterScheduleId) {
+      query += ` AND a.schedule_id = $2`;
+      params.push(filterScheduleId);
+    }
+    query += ` ORDER BY
          CASE
-           WHEN a.appointment_status = 'confirmed'
-           THEN 0
-
-           WHEN a.appointment_status = 'scheduled'
-           THEN 1
-
-           WHEN a.appointment_status = 'pending'
-           THEN 2
-
-           WHEN a.appointment_status = 'completed'
-           THEN 3
-
+           WHEN a.appointment_status = 'confirmed' THEN 0
+           WHEN a.appointment_status = 'scheduled' THEN 1
+           WHEN a.appointment_status = 'pending' THEN 2
+           WHEN a.appointment_status = 'completed' THEN 3
            ELSE 4
          END,
-
-         a.appointment_id DESC`,
-      [doctorId]
-    );
+         a.appointment_id DESC`;
+    const result = await pool.query(query, params);
 
 
     return res.status(200).json({
@@ -2349,6 +2332,218 @@ const getDoctorComplaints = async (req, res) => {
 //   applyDoctor,
 //   loginDoctor,
 // };
+// =====================================================
+// STAFF ASSIGNMENT HELPERS
+// =====================================================
+const cleanupExpiredSuspensionAndAssignments = async () => {
+  try {
+    await pool.query(`UPDATE staff SET suspended_until = NULL WHERE suspended_until IS NOT NULL AND suspended_until <= NOW()`);
+  } catch (_) {}
+  try {
+    await pool.query(`UPDATE staff_assignment SET status='ENDED' WHERE status='ACTIVE' AND end_date IS NOT NULL AND end_date <= NOW()`);
+  } catch (_) {}
+};
+
+// =====================================================
+// GET MY STAFF (Primary + Temporary) for Doctor Dashboard
+// =====================================================
+const getMyStaff = async (req, res) => {
+  try {
+    const doctorId = req.user.doctor_id;
+    const access = await getActiveDoctor(doctorId);
+    if (!access.ok) return sendDoctorAccessError(res, access);
+
+    await cleanupExpiredSuspensionAndAssignments();
+
+    const primaryRes = await pool.query(
+      `SELECT sa.assignment_id, sa.staff_id, sa.assignment_type, sa.start_date, sa.end_date, sa.status,
+              s.email, s.phone_number, s.gender, s.profile_pic, s.suspended_until, s.approval_status,
+              CASE WHEN s.suspended_until IS NOT NULL AND s.suspended_until > NOW() THEN true ELSE false END as is_suspended
+       FROM staff_assignment sa
+       JOIN staff s ON sa.staff_id = s.staff_id
+       WHERE sa.doctor_id=$1 AND sa.assignment_type='PRIMARY' AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+       LIMIT 1`,
+      [doctorId]
+    );
+
+    const tempRes = await pool.query(
+      `SELECT sa.assignment_id, sa.staff_id, sa.assignment_type, sa.start_date, sa.end_date, sa.status,
+              s.email, s.phone_number, s.gender, s.profile_pic, s.suspended_until, s.approval_status,
+              CASE WHEN s.suspended_until IS NOT NULL AND s.suspended_until > NOW() THEN true ELSE false END as is_suspended
+       FROM staff_assignment sa
+       JOIN staff s ON sa.staff_id = s.staff_id
+       WHERE sa.doctor_id=$1 AND sa.assignment_type='TEMPORARY' AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+       LIMIT 1`,
+      [doctorId]
+    );
+
+    // Derive primary live status from suspended_until as well
+    let primary = primaryRes.rows[0] || null;
+    let temporary = tempRes.rows[0] || null;
+
+    // If primary's suspension has ended, temporary should have been auto-ended already, but ensure
+    if (primary && primary.suspended_until && new Date(primary.suspended_until) <= new Date() && temporary) {
+      // suspension ended but temp still active due to race - re-cleanup
+      await pool.query(`UPDATE staff_assignment SET status='ENDED' WHERE assignment_id=$1`, [temporary.assignment_id]);
+      temporary = null;
+    }
+
+    return res.status(200).json({
+      primary,
+      temporary,
+      hasPrimary: !!primary,
+      hasTemporary: !!temporary,
+    });
+  } catch (error) {
+    console.error("getMyStaff error:", error);
+    return res.status(500).json({ message: "Could not load staff info.", error: error.message });
+  }
+};
+
+// =====================================================
+// GET AVAILABLE STAFF FOR DOCTOR (Req 4)
+// =====================================================
+const getAvailableStaff = async (req, res) => {
+  try {
+    const doctorId = req.user.doctor_id;
+    const access = await getActiveDoctor(doctorId);
+    if (!access.ok) return sendDoctorAccessError(res, access);
+
+    await cleanupExpiredSuspensionAndAssignments();
+
+    const result = await pool.query(
+      `SELECT s.staff_id, s.email, s.phone_number, s.gender, s.profile_pic, s.approval_status, s.suspended_until
+       FROM staff s
+       WHERE s.approval_status='approved'
+         AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+         AND NOT EXISTS (
+           SELECT 1 FROM staff_assignment sa
+           WHERE sa.staff_id = s.staff_id AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+         )
+       ORDER BY s.staff_id ASC`
+    );
+
+    return res.status(200).json({ staff: result.rows });
+  } catch (error) {
+    console.error("getAvailableStaff error:", error);
+    return res.status(500).json({ message: "Could not fetch available staff.", error: error.message });
+  }
+};
+
+// =====================================================
+// ASSIGN STAFF (PRIMARY or TEMPORARY) - transaction + locking
+// =====================================================
+const assignStaff = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const doctorId = req.user.doctor_id;
+    const access = await getActiveDoctor(doctorId);
+    if (!access.ok) return sendDoctorAccessError(res, access);
+
+    const { staff_id } = req.body;
+    if (!staff_id) return res.status(400).json({ message: "staff_id is required." });
+
+    await client.query("BEGIN");
+    await client.query(`UPDATE staff SET suspended_until = NULL WHERE suspended_until IS NOT NULL AND suspended_until <= NOW()`);
+    await client.query(`UPDATE staff_assignment SET status='ENDED' WHERE status='ACTIVE' AND end_date IS NOT NULL AND end_date <= NOW()`);
+
+    // Lock staff row
+    const staffRes = await client.query(`SELECT staff_id, approval_status, suspended_until FROM staff WHERE staff_id=$1 FOR UPDATE`, [staff_id]);
+    if (staffRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Staff not found." });
+    }
+    const staff = staffRes.rows[0];
+    if (staff.approval_status !== 'approved') {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Staff is not approved." });
+    }
+    if (staff.suspended_until && new Date(staff.suspended_until) > new Date()) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Cannot assign suspended staff." });
+    }
+    // Already actively assigned?
+    const activeAssign = await client.query(
+      `SELECT assignment_id FROM staff_assignment WHERE staff_id=$1 AND status='ACTIVE' AND (end_date IS NULL OR end_date > NOW()) FOR UPDATE`,
+      [staff_id]
+    );
+    if (activeAssign.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "This staff is already actively assigned to another Doctor." });
+    }
+    // Check current primary for this doctor
+    const primaryRes = await client.query(
+      `SELECT sa.assignment_id, sa.staff_id, s.suspended_until
+       FROM staff_assignment sa JOIN staff s ON sa.staff_id=s.staff_id
+       WHERE sa.doctor_id=$1 AND sa.assignment_type='PRIMARY' AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+       FOR UPDATE`,
+      [doctorId]
+    );
+
+    const tempRes = await client.query(
+      `SELECT assignment_id FROM staff_assignment WHERE doctor_id=$1 AND assignment_type='TEMPORARY' AND status='ACTIVE' AND (end_date IS NULL OR end_date > NOW()) FOR UPDATE`,
+      [doctorId]
+    );
+
+    let assignmentType;
+    let endDate = null;
+
+    if (primaryRes.rows.length === 0) {
+      // No primary -> assign PRIMARY
+      if (tempRes.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Doctor already has a temporary assignment without primary. Contact admin." });
+      }
+      assignmentType = 'PRIMARY';
+      endDate = null;
+    } else {
+      // Has primary, check if suspended
+      const primary = primaryRes.rows[0];
+      const isSuspended = primary.suspended_until && new Date(primary.suspended_until) > new Date();
+      if (!isSuspended) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ message: "Doctor already has an active Primary Staff. Cannot assign another primary." });
+      }
+      // Primary is suspended -> allow TEMPORARY if no temp exists
+      if (tempRes.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ message: "Doctor already has an active Temporary Replacement Staff." });
+      }
+      assignmentType = 'TEMPORARY';
+      endDate = primary.suspended_until; // same period as suspension
+    }
+
+    // Insert with unique constraint protection
+    let insertRes;
+    try {
+      insertRes = await client.query(
+        `INSERT INTO staff_assignment (staff_id, doctor_id, assignment_type, start_date, end_date, status)
+         VALUES ($1,$2,$3, NOW(), $4, 'ACTIVE') RETURNING *`,
+        [staff_id, doctorId, assignmentType, endDate]
+      );
+    } catch (e) {
+      await client.query("ROLLBACK");
+      if (e.code === '23505') {
+        return res.status(409).json({ message: "Assignment conflict: staff or doctor already has active assignment. Try refreshed list." });
+      }
+      throw e;
+    }
+
+    await client.query("COMMIT");
+    return res.status(201).json({
+      message: assignmentType === 'PRIMARY' ? "Primary Staff assigned successfully." : "Temporary Replacement Staff assigned successfully.",
+      assignment: insertRes.rows[0],
+    });
+
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("assignStaff error:", error);
+    return res.status(500).json({ message: "Could not assign staff.", error: error.message });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   applyDoctor,
   loginDoctor,
@@ -2365,4 +2560,7 @@ module.exports = {
     getDoctorComplaintTargets,
   createDoctorComplaint,
   getDoctorComplaints,
+  getMyStaff,
+  getAvailableStaff,
+  assignStaff,
 };

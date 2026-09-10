@@ -19,6 +19,7 @@ const {
   getStaffRegistrationStatus,
 
   getStaffProfile,
+  getMyAssignment,
 
   getStaffDashboardStats,
 
@@ -28,6 +29,8 @@ const {
 
   scheduleAppointment,
   getAvailableSchedules,
+  approveAppointment,
+  rejectAppointment,
 
   getComplaintTargets,
 
@@ -231,6 +234,11 @@ router.get(
   getStaffProfile
 );
 
+router.get(
+  "/my-assignment",
+  getMyAssignment
+);
+
 
 // =====================================================
 // DASHBOARD STATISTICS
@@ -282,6 +290,17 @@ router.patch(
 router.get(
   "/available-schedules",
   getAvailableSchedules
+);
+
+// APPROVE / REJECT - read-only relationships, capacity + race protected
+router.patch(
+  "/appointments/:id/approve",
+  approveAppointment
+);
+
+router.patch(
+  "/appointments/:id/reject",
+  rejectAppointment
 );
 
 

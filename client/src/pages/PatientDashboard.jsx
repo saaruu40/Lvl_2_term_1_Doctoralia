@@ -64,6 +64,51 @@ const [referrals, setReferrals] =
     setSelectedDoctor] =
     useState(null);
 
+  // New booking flow: Date -> Doctors -> Schedules
+  const [bookingDate, setBookingDate] = useState("");
+  const [bookingDoctors, setBookingDoctors] = useState([]);
+  const [bookingDoctorId, setBookingDoctorId] = useState("");
+  const [bookingSchedules, setBookingSchedules] = useState([]);
+  const [bookingScheduleId, setBookingScheduleId] = useState("");
+
+  const loadBookingDoctors = async (date) => {
+    if (!date) { setBookingDoctors([]); return; }
+    try {
+      const params = new URLSearchParams({ date });
+      if (selectedDepartment) params.append("department_id", selectedDepartment);
+      const res = await authFetch(`${API}/doctors/available-by-date?${params.toString()}`);
+      const data = await res.json();
+      if (res.ok) setBookingDoctors(data.doctors || []);
+      else setBookingDoctors([]);
+    } catch { setBookingDoctors([]); }
+  };
+  const loadBookingSchedules = async (doctorId, date) => {
+    if (!doctorId || !date) { setBookingSchedules([]); return; }
+    try {
+      const res = await authFetch(`${API}/doctors/${doctorId}/schedules/by-date?date=${date}`);
+      const data = await res.json();
+      if (res.ok) setBookingSchedules(data.schedules || []);
+      else setBookingSchedules([]);
+    } catch { setBookingSchedules([]); }
+  };
+  const bookAppointmentWithSchedule = async () => {
+    if (!bookingDate || !bookingDoctorId || !bookingScheduleId) {
+      setMessage("Select date, doctor and schedule."); return;
+    }
+    if (!window.confirm("Confirm appointment?")) return;
+    try {
+      const response = await authFetch(`${API}/appointments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patient_id: patient.patient_id, doctor_id: Number(bookingDoctorId), schedule_id: Number(bookingScheduleId) }),
+      });
+      const data = await response.json();
+      setMessage(data.message);
+      if (response.status === 403) { localStorage.removeItem("patient"); alert(data.message); navigate("/patient-login",{replace:true}); return; }
+      if (response.ok) { await loadAppointments(); setSection("appointments"); setBookingScheduleId(""); }
+    } catch { setMessage("Could not submit appointment."); }
+  };
+
   const [message, setMessage] =
     useState("");
 
@@ -966,7 +1011,44 @@ const loadReferrals = async () => {
               Find Doctors
             </h1>
 
+            {/* New booking flow: Date -> Doctors -> Schedules */}
+            <div style={{ background:"white", padding:"16px", borderRadius:"12px", border:"1px solid #e5e7eb", marginBottom:"16px" }}>
+              <h3 style={{ margin:"0 0 10px 0" }}>Book Appointment: Select Date → Doctor → Schedule</h3>
+              <div style={{ display:"flex", gap:"10px", flexWrap:"wrap", alignItems:"end" }}>
+                <div>
+                  <label>Appointment Date *</label><br />
+                  <input type="date" value={bookingDate} onChange={(e)=>{ setBookingDate(e.target.value); setBookingDoctorId(""); setBookingScheduleId(""); setBookingSchedules([]); if(e.target.value) loadBookingDoctors(e.target.value); else setBookingDoctors([]); }} style={{ padding:"8px", border:"1px solid #d1d5db", borderRadius:"6px" }} />
+                </div>
+                <div>
+                  <label>Available Doctors *</label><br />
+                  <select value={bookingDoctorId} onChange={(e)=>{ const val=e.target.value; setBookingDoctorId(val); setBookingScheduleId(""); if(val && bookingDate) loadBookingSchedules(val, bookingDate); else setBookingSchedules([]); }} style={{ padding:"8px", border:"1px solid #d1d5db", borderRadius:"6px", minWidth:"200px" }}>
+                    <option value="">{bookingDate ? (bookingDoctors.length ? "Select Doctor" : "No doctors for this date") : "Select date first"}</option>
+                    {bookingDoctors.map(d=> <option key={d.doctor_id} value={d.doctor_id}>Dr. {d.full_name} - {d.department_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Available Schedule *</label><br />
+                  <select value={bookingScheduleId} onChange={(e)=> setBookingScheduleId(e.target.value)} style={{ padding:"8px", border:"1px solid #d1d5db", borderRadius:"6px", minWidth:"200px" }}>
+                    <option value="">{bookingDoctorId ? (bookingSchedules.length ? "Select Schedule" : "No schedules") : "Select doctor first"}</option>
+                    {bookingSchedules.map(s=> <option key={s.schedule_id} value={s.schedule_id}>{String(s.available_date).split("T")[0]} {String(s.start_time).slice(0,5)}-{String(s.end_time).slice(0,5)} {s.hospital_name?`@ ${s.hospital_name}`:""}</option>)}
+                  </select>
+                </div>
+                <button onClick={bookAppointmentWithSchedule} disabled={!bookingDate || !bookingDoctorId || !bookingScheduleId} style={{ padding:"9px 14px", background: (!bookingDate || !bookingDoctorId || !bookingScheduleId) ? "#9ca3af" : "#0f766e", color:"white", border:"none", borderRadius:"6px", cursor: (!bookingDate || !bookingDoctorId || !bookingScheduleId) ? "not-allowed":"pointer" }}>Confirm Appointment</button>
+              </div>
+              {bookingScheduleId && (()=>{ const s=bookingSchedules.find(x=>String(x.schedule_id)===String(bookingScheduleId)); const doc=bookingDoctors.find(d=>String(d.doctor_id)===String(bookingDoctorId)); if(!s) return null; return (
+                <div style={{ marginTop:"12px", background:"#ecfdf5", border:"1px solid #6ee7b7", padding:"12px", borderRadius:"8px" }}>
+                  <h4 style={{ margin:"0 0 6px 0", color:"#065f46" }}>Selected Appointment</h4>
+                  <p><strong>Doctor:</strong> Dr. {doc?.full_name || bookingDoctorId}</p>
+                  <p><strong>Date:</strong> {String(s.available_date).split("T")[0]}</p>
+                  <p><strong>Time:</strong> {String(s.start_time).slice(0,5)} - {String(s.end_time).slice(0,5)}</p>
+                  <p><strong>Status:</strong> Available</p>
+                  <p><strong>Hospital:</strong> {s.hospital_name || s.hospital_id || "-"}</p>
+                </div>
+              ); })()}
+              <p style={{ fontSize:"12px", color:"#6b7280", marginTop:"8px" }}>Doctors shown have available schedules on the selected date. Schedules are fetched via backend filtering.</p>
+            </div>
 
+            <h3 style={{ marginTop:"10px" }}>Or browse all doctors</h3>
             <div className="doctor-filters">
 
               <select
@@ -1101,17 +1183,6 @@ const loadReferrals = async () => {
                       View Biodata
                     </button>
 
-
-                    <button
-                      onClick={() =>
-                        bookAppointment(
-                          doctor.doctor_id
-                        )
-                      }
-                    >
-                      Book Appointment
-                    </button>
-
                   </div>
 
                 )
@@ -1212,17 +1283,7 @@ const loadReferrals = async () => {
                   </p>
 
 
-                  <button
-                    onClick={() =>
-                      bookAppointment(
-                        selectedDoctor
-                          .doctor_id
-                      )
-                    }
-                  >
-                    Book Appointment
-                  </button>
-
+                  <p style={{ fontSize:"12px", color:"#6b7280", marginTop:"10px" }}>To book, use the date → doctor → schedule flow at the top and Confirm Appointment.</p>
                 </div>
 
               </div>
@@ -1328,10 +1389,16 @@ const loadReferrals = async () => {
                           appointment
                             .end_time
 
-                            ? `${appointment.start_time} - ${appointment.end_time}`
+                            ? `${String(appointment.start_time).slice(0,5)} - ${String(appointment.end_time).slice(0,5)}`
 
                             : "Waiting for staff assignment"
                         }
+                      </p>
+
+                      <p>
+                        Appointment Request Created:
+                        {" "}
+                        {appointment.booking_date ? new Date(appointment.booking_date).toLocaleString() : "-"}
                       </p>
 
 

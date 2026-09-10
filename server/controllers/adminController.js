@@ -1177,6 +1177,77 @@ const getAdminRegistrationStatus = async (req, res) => {
 };
 
 // =====================================================
+// APPROVED STAFF (with assignment info)
+// =====================================================
+const getApprovedStaff = async (req, res) => {
+  try {
+    await pool.query(`UPDATE staff SET suspended_until = NULL WHERE suspended_until IS NOT NULL AND suspended_until <= NOW()`);
+    await pool.query(`UPDATE staff_assignment SET status='ENDED' WHERE status='ACTIVE' AND end_date IS NOT NULL AND end_date <= NOW()`);
+    const result = await pool.query(
+      `SELECT s.staff_id, s.email, s.phone_number, s.gender, s.profile_pic, s.approval_status, s.suspended_until,
+              sa.assignment_id, sa.doctor_id, sa.assignment_type, sa.status as assignment_status,
+              d.full_name as assigned_doctor_name
+       FROM staff s
+       LEFT JOIN staff_assignment sa ON sa.staff_id=s.staff_id AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+       LEFT JOIN doctor d ON d.doctor_id=sa.doctor_id
+       WHERE s.approval_status='approved'
+       ORDER BY s.staff_id DESC`
+    );
+    // derive available flag
+    const enriched = result.rows.map(r => ({
+      ...r,
+      is_assigned: !!r.assignment_id,
+      is_suspended: r.suspended_until && new Date(r.suspended_until) > new Date(),
+      is_available: !r.assignment_id && (!r.suspended_until || new Date(r.suspended_until) <= new Date()),
+    }));
+    return res.status(200).json({ staff: enriched });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch approved staff.", error: error.message });
+  }
+};
+
+// =====================================================
+// SUSPENDED STAFF
+// =====================================================
+const getSuspendedStaff = async (req, res) => {
+  try {
+    await pool.query(`UPDATE staff SET suspended_until = NULL WHERE suspended_until IS NOT NULL AND suspended_until <= NOW()`);
+    const result = await pool.query(
+      `SELECT staff_id, email, phone_number, gender, profile_pic, approval_status, suspended_until
+       FROM staff
+       WHERE suspended_until IS NOT NULL AND suspended_until > NOW()
+       ORDER BY suspended_until DESC`
+    );
+    return res.status(200).json({ staff: result.rows });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch suspended staff.", error: error.message });
+  }
+};
+
+// =====================================================
+// AVAILABLE STAFF (approved, not suspended, not assigned, not temporary active)
+// =====================================================
+const getAvailableStaffAdmin = async (req, res) => {
+  try {
+    await pool.query(`UPDATE staff SET suspended_until = NULL WHERE suspended_until IS NOT NULL AND suspended_until <= NOW()`);
+    await pool.query(`UPDATE staff_assignment SET status='ENDED' WHERE status='ACTIVE' AND end_date IS NOT NULL AND end_date <= NOW()`);
+    const result = await pool.query(
+      `SELECT s.staff_id, s.email, s.phone_number, s.gender, s.profile_pic, s.approval_status, s.suspended_until
+       FROM staff s
+       WHERE s.approval_status='approved'
+         AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+         AND NOT EXISTS (
+           SELECT 1 FROM staff_assignment sa WHERE sa.staff_id=s.staff_id AND sa.status='ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+         )
+       ORDER BY s.staff_id ASC`
+    );
+    return res.status(200).json({ staff: result.rows });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch available staff.", error: error.message });
+  }
+};
+
+// =====================================================
 // EXPORTS
 // =====================================================
 
@@ -1195,6 +1266,9 @@ module.exports = {
   getPendingStaff,
   approveStaff,
   rejectStaff,
+  getApprovedStaff,
+  getSuspendedStaff,
+  getAvailableStaffAdmin,
 
   getDoctorHistory,
   getStaffHistory,

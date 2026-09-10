@@ -17,6 +17,9 @@ const {
   getPendingStaff,
   approveStaff,
   rejectStaff,
+  getApprovedStaff,
+  getSuspendedStaff,
+  getAvailableStaffAdmin,
 
   getDoctorHistory,
   getStaffHistory,
@@ -56,6 +59,9 @@ router.patch("/doctors/:id/reject", authMiddleware,roleMiddleware("admin"),rejec
 router.get("/staff/pending",authMiddleware,roleMiddleware("admin"), getPendingStaff);
 router.patch("/staff/:id/approve",authMiddleware,roleMiddleware("admin"), approveStaff);
 router.patch("/staff/:id/reject",authMiddleware, roleMiddleware("admin"),rejectStaff);
+router.get("/staff/approved",authMiddleware,roleMiddleware("admin"), getApprovedStaff);
+router.get("/staff/suspended",authMiddleware,roleMiddleware("admin"), getSuspendedStaff);
+router.get("/staff/available",authMiddleware,roleMiddleware("admin"), getAvailableStaffAdmin);
 
 
 // Admin action history

@@ -11,6 +11,8 @@ const {
   loginPatient,
 
   getApprovedDoctors,
+  getAvailableDoctorsByDate,
+  getAvailableSchedulesByDate,
   getPatientDepartments,
   getDoctorDetails,
   getDoctorAvailableSchedules,
@@ -57,6 +59,17 @@ router.post(
 router.get(
   "/doctors",
   getApprovedDoctors
+);
+
+// New Date-filtered flows (Req 12,13)
+router.get(
+  "/doctors/available-by-date",
+  getAvailableDoctorsByDate
+);
+
+router.get(
+  "/doctors/:id/schedules/by-date",
+  getAvailableSchedulesByDate
 );
 
 router.get(

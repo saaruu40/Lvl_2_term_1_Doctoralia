@@ -153,12 +153,11 @@ const createSchedule = async (req, res) => {
 
     const now = new Date();
     try {
-      assertScheduleWindow(now);
       const targetDate = getTargetDateStr(now);
       const yearEnd = getYearEndDateStr(now);
       let { available_date, start_time, end_time, hospital_id, status } = req.body;
       if (!available_date) available_date = targetDate;
-      // Allow any date from tomorrow through Dec 31 of same year
+      // Allow any date from tomorrow through Dec 31 of same year - no window restriction for creation
       assertTargetDateInSameYear(available_date, now);
       // Normalize to YYYY-MM-DD
       available_date = String(available_date).split("T")[0];
@@ -251,12 +250,13 @@ const updateSchedule = async (req, res) => {
 
     // Ownership via doctor_schedule
     const existing = await pool.query(
-      `SELECT s.*, ds.status as slot_status, ds.doctor_id FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]
+      `SELECT s.schedule_id, s.available_date, TO_CHAR(s.available_date,'YYYY-MM-DD') as available_date_str, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, ds.doctor_id FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]
     );
     if (existing.rows.length === 0) return res.status(404).json({ message: "Schedule not found or not owned by you." });
     const schedule = existing.rows[0];
-    // Allow editing any same-year future schedule (from tomorrow through Dec 31); window still gated
-    try { assertTargetDateInSameYear(schedule.available_date, now); } catch (e) {
+    // Allow editing any same-year future schedule (from tomorrow through Dec 31); window still gated - use DB formatted date to avoid TZ shift
+    const existingDateStr = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
+    try { assertTargetDateInSameYear(existingDateStr, now); } catch (e) {
       return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be edited during the 12:55 PM–6:00 PM window.", details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
@@ -338,15 +338,13 @@ const deleteSchedule = async (req, res) => {
 
     const scheduleId = req.params.id;
     const now = new Date();
-    try { assertScheduleWindow(now); } catch (winErr) {
-      return res.status(winErr.status).json({ message: winErr.message, code: winErr.code || undefined, details: winErr.details });
-    }
 
-    const existing = await pool.query(`SELECT s.*, ds.status as slot_status FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]);
+    const existing = await pool.query(`SELECT s.schedule_id, s.available_date, TO_CHAR(s.available_date,'YYYY-MM-DD') as available_date_str, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]);
     if (existing.rows.length === 0) return res.status(404).json({ message: "Schedule not found or not owned by you." });
     const schedule = existing.rows[0];
-    try { assertTargetDateInSameYear(schedule.available_date, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be deleted during the 12:55 PM–6:00 PM window.", code: e.code || undefined, details: e.details });
+    const schDateStr = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
+    try { assertTargetDateInSameYear(schDateStr, now); } catch (e) {
+      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be deleted.", code: e.code || undefined, details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired schedule cannot be deleted." });
@@ -390,15 +388,13 @@ const updateAvailability = async (req, res) => {
     }
 
     const now = new Date();
-    try { assertScheduleWindow(now); } catch (winErr) {
-      return res.status(winErr.status).json({ message: winErr.message, code: winErr.code || undefined, details: winErr.details });
-    }
 
-    const existing = await pool.query(`SELECT s.*, ds.status as slot_status FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]);
+    const existing = await pool.query(`SELECT s.schedule_id, s.available_date, TO_CHAR(s.available_date,'YYYY-MM-DD') as available_date_str, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE s.schedule_id=$1 AND ds.doctor_id=$2`, [scheduleId, doctorId]);
     if (existing.rows.length === 0) return res.status(404).json({ message: "Schedule not found or not owned by you." });
     const schedule = existing.rows[0];
-    try { assertTargetDateInSameYear(schedule.available_date, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be updated during the window.", code: e.code || undefined, details: e.details });
+    const avDateStrUpd = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
+    try { assertTargetDateInSameYear(avDateStrUpd, now); } catch (e) {
+      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be updated.", code: e.code || undefined, details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired slot cannot be updated." });

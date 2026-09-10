@@ -364,3 +364,28 @@ CREATE TABLE IF NOT EXISTS referral (
         FOREIGN KEY (referred_to)
         REFERENCES doctor(doctor_id)
 );
+
+-- =====================================================
+-- STAFF-DOCTOR ASSIGNMENT (Primary + Temporary Replacement)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS staff_assignment (
+    assignment_id SERIAL PRIMARY KEY,
+    staff_id INTEGER NOT NULL REFERENCES staff(staff_id) ON DELETE CASCADE,
+    doctor_id INTEGER NOT NULL REFERENCES doctor(doctor_id) ON DELETE CASCADE,
+    assignment_type VARCHAR(20) NOT NULL CHECK (assignment_type IN ('PRIMARY','TEMPORARY')),
+    start_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    end_date TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','ENDED','SUSPENDED')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- One active assignment per staff (prevents two doctors at once)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_active_staff ON staff_assignment(staff_id) WHERE status = 'ACTIVE';
+-- One primary per doctor
+CREATE UNIQUE INDEX IF NOT EXISTS ux_active_primary ON staff_assignment(doctor_id) WHERE status = 'ACTIVE' AND assignment_type = 'PRIMARY';
+-- One temporary per doctor (at most one replacement)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_active_temporary ON staff_assignment(doctor_id) WHERE status = 'ACTIVE' AND assignment_type = 'TEMPORARY';
+
+CREATE INDEX IF NOT EXISTS idx_staff_assignment_staff ON staff_assignment(staff_id);
+CREATE INDEX IF NOT EXISTS idx_staff_assignment_doctor ON staff_assignment(doctor_id);
+CREATE INDEX IF NOT EXISTS idx_staff_assignment_status ON staff_assignment(status);

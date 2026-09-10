@@ -22,17 +22,11 @@ function StaffDashboard() {
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [complaints, setComplaints] = useState([]);
+  const [myAssignment, setMyAssignment] = useState(null);
 
-  const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
   const [loading, setLoading] = useState(false);
-
-  const [scheduleForm, setScheduleForm] = useState({
-    hospital_id: "",
-    schedule_id: "",
-  });
-  const [availableSlots, setAvailableSlots] = useState([]);
 
   const [complaintForm, setComplaintForm] = useState({
     against_type: "patient",
@@ -133,12 +127,12 @@ function StaffDashboard() {
   };
 
   const loadHospitals = async () => {
-    const response = await authFetch(`${API}/hospitals`);
-    const data = await response.json();
-
-    if (response.ok) {
-      setHospitals(data.hospitals || []);
-    }
+    // kept for backward compat, not used after Part1 - staff no longer selects hospital
+    try {
+      const response = await authFetch(`${API}/hospitals`);
+      const data = await response.json();
+      if (response.ok) setHospitals(data.hospitals || []);
+    } catch {}
   };
 
   const loadComplaintTargets = async () => {
@@ -160,6 +154,14 @@ function StaffDashboard() {
     }
   };
 
+  const loadMyAssignment = async () => {
+    try {
+      const response = await authFetch(`${API}/my-assignment`);
+      const data = await response.json();
+      if (response.ok) setMyAssignment(data.assignment || null);
+    } catch { setMyAssignment(null); }
+  };
+
   const loadEverything = async () => {
     try {
       await Promise.all([
@@ -169,6 +171,7 @@ function StaffDashboard() {
         loadHospitals(),
         loadComplaintTargets(),
         loadComplaints(),
+        loadMyAssignment(),
       ]);
     } catch (error) {
       if (error.message) {
@@ -196,61 +199,32 @@ function StaffDashboard() {
     loadEverything();
   }, []);
 
-  const loadAvailableSlots = async (doctorId) => {
-    try {
-      const res = await authFetch(`${API}/available-schedules?doctor_id=${doctorId}`);
-      const data = await res.json();
-      if (res.ok) setAvailableSlots(data.schedules || []);
-      else setAvailableSlots([]);
-    } catch {
-      setAvailableSlots([]);
-    }
-  };
-
-  const openScheduleForm = async (appointment) => {
-    setSelectedAppointment(appointment);
-    setScheduleForm({
-      hospital_id: appointment.hospital_id ? String(appointment.hospital_id) : "",
-      schedule_id: appointment.schedule_id ? String(appointment.schedule_id) : "",
-    });
-    if (appointment.doctor_id) await loadAvailableSlots(appointment.doctor_id);
-  };
-
-  const submitSchedule = async (event) => {
-    event.preventDefault();
-
-    if (!selectedAppointment) return;
-
+  const approveAppointment = async (appointmentId) => {
     try {
       setLoading(true);
       setMessage("");
-
-      const response = await authFetch(
-        `${API}/appointments/${selectedAppointment.appointment_id}/schedule`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(scheduleForm),
-        }
-      );
-
+      const response = await authFetch(`${API}/appointments/${appointmentId}/approve`, { method: "PATCH" });
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Could not schedule appointment.");
-      }
-
+      if (!response.ok) throw new Error(data.message || "Could not approve appointment.");
       showMessage(data.message, "success");
-      setSelectedAppointment(null);
-
       await Promise.all([loadAppointments(), loadStats()]);
     } catch (error) {
       showMessage(error.message, "error");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
+  };
+
+  const rejectAppointment = async (appointmentId) => {
+    try {
+      setLoading(true);
+      setMessage("");
+      const response = await authFetch(`${API}/appointments/${appointmentId}/reject`, { method: "PATCH" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Could not reject appointment.");
+      showMessage(data.message, "success");
+      await Promise.all([loadAppointments(), loadStats()]);
+    } catch (error) {
+      showMessage(error.message, "error");
+    } finally { setLoading(false); }
   };
 
   const submitComplaint = async (event) => {
@@ -359,6 +333,23 @@ function StaffDashboard() {
               Manage appointment hospitals, schedules and complaint records.
             </p>
 
+            {/* My Doctor assignment card */}
+            <div style={{ background: "white", padding: "16px", borderRadius: "12px", marginBottom: "16px", border: "1px solid #e5e7eb" }}>
+              <h3 style={{ margin: "0 0 8px 0" }}>My Doctor</h3>
+              {myAssignment ? (
+                <>
+                  <p><strong>Doctor:</strong> {myAssignment.doctor_name} (ID #{myAssignment.doctor_id})</p>
+                  <p><strong>Assignment:</strong> {myAssignment.assignment_type === 'PRIMARY' ? 'Primary' : 'Temporary Replacement'}</p>
+                  <p><strong>Status:</strong> <span style={{ color: "green", fontWeight: 600 }}>Active</span></p>
+                  {myAssignment.assignment_type === 'TEMPORARY' && myAssignment.end_date && (
+                    <p><strong>Valid Until:</strong> {new Date(myAssignment.end_date).toLocaleString()}</p>
+                  )}
+                </>
+              ) : (
+                <p style={{ color: "#6b7280" }}>You are currently not assigned to any Doctor.</p>
+              )}
+            </div>
+
             <div className="staff-stats">
               <div className="staff-stat-card">
                 <h3>{stats.pendingAppointments}</h3>
@@ -384,9 +375,11 @@ function StaffDashboard() {
             <div className="staff-dashboard-panel">
               <h2>Quick Overview</h2>
               <p>
-                There are <strong>{pendingAppointments.length}</strong> pending
-                appointment requests waiting for hospital and schedule
-                assignment.
+                {myAssignment ? (
+                  <>There are <strong>{pendingAppointments.length}</strong> pending appointment requests for <strong>Dr. {myAssignment.doctor_name}</strong>.</>
+                ) : (
+                  <>There are <strong>{pendingAppointments.length}</strong> pending appointment requests. You are not assigned to a doctor yet.</>
+                )}
               </p>
             </div>
           </section>
@@ -394,16 +387,25 @@ function StaffDashboard() {
 
         {section === "appointments" && (
           <section>
-            <h1>Appointment Scheduling</h1>
+            <h1>My Appointments</h1>
+            {!myAssignment && (
+              <p style={{ background: "#fef3c7", border: "1px solid #fcd34d", padding: "10px", borderRadius: "6px" }}>You are not assigned to any doctor. Ask a doctor to assign you as Primary or Temporary staff.</p>
+            )}
             <p className="staff-section-description">
-              Select a hospital, date and time for each patient appointment.
+              Review appointment requests and Approve or Reject. Appointment details are read-only.
             </p>
 
             <div className="staff-appointment-list">
               {appointments.length === 0 ? (
-                <p>No appointments found.</p>
+                <p>{myAssignment ? "No appointments for your doctor yet." : "No appointments found. You are not assigned."}</p>
               ) : (
-                appointments.map((appointment) => (
+                appointments.map((appointment) => {
+                  const max = appointment.doctor_max_patients;
+                  const booked = Number(appointment.currently_booked || 0);
+                  const remaining = appointment.remaining_slots != null ? Number(appointment.remaining_slots) : (max != null ? Math.max(max - booked, 0) : null);
+                  const isPending = appointment.appointment_status === 'pending';
+                  const isFull = max != null && booked >= max;
+                  return (
                   <div
                     className="staff-appointment-card"
                     key={appointment.appointment_id}
@@ -437,7 +439,7 @@ function StaffDashboard() {
                       </p>
 
                       <p>
-                        <strong>Date:</strong>{" "}
+                        <strong>Appointment Date:</strong>{" "}
                         {appointment.available_date
                           ? new Date(
                               appointment.available_date
@@ -446,7 +448,7 @@ function StaffDashboard() {
                       </p>
 
                       <p>
-                        <strong>Time:</strong>{" "}
+                        <strong>Appointment Time:</strong>{" "}
                         {appointment.start_time && appointment.end_time
                           ? `${String(appointment.start_time).slice(
                               0,
@@ -456,116 +458,55 @@ function StaffDashboard() {
                       </p>
 
                       <p>
-                        <strong>Payment:</strong>{" "}
-                        {appointment.payment_status || "Not paid"}
+                        <strong>Status:</strong>{" "}
+                        {appointment.appointment_status}
                       </p>
+                      {appointment.booking_date && (
+                        <p>
+                          <strong>Request Created:</strong>{" "}
+                          {new Date(appointment.booking_date).toLocaleString()}
+                        </p>
+                      )}
                     </div>
 
-                    {["pending", "scheduled"].includes(
-                      appointment.appointment_status
-                    ) && (
-                      <button
-                        className="staff-primary-button"
-                        onClick={() => openScheduleForm(appointment)}
-                      >
-                        {appointment.appointment_status === "scheduled"
-                          ? "Edit Schedule"
-                          : "Set Hospital & Schedule"}
-                      </button>
+                    <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", padding: "10px", borderRadius: "6px", marginTop: "10px" }}>
+                      <strong>Schedule Capacity</strong>
+                      <hr style={{ margin: "6px 0", border: "none", borderTop: "1px solid #e5e7eb" }} />
+                      <p>Doctor Max Patients: {max != null ? max : "-"}</p>
+                      <p>Currently Booked: {booked}</p>
+                      <p>Remaining Slots: {remaining != null ? remaining : "-"}</p>
+                      {isFull && <p style={{ color: "#dc2626", fontWeight: 600, marginTop: "6px" }}>Schedule capacity reached.</p>}
+                    </div>
+
+                    {isPending && (
+                      <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+                        <button
+                          className="staff-primary-button"
+                          onClick={() => approveAppointment(appointment.appointment_id)}
+                          disabled={loading || isFull}
+                          title={isFull ? "This schedule has reached the doctor's maximum patient capacity." : undefined}
+                          style={{ opacity: isFull ? 0.6 : 1 }}
+                        >
+                          {loading ? "Processing..." : "Approve"}
+                        </button>
+                        <button
+                          className="staff-primary-button"
+                          onClick={() => rejectAppointment(appointment.appointment_id)}
+                          disabled={loading}
+                          style={{ background: "#dc2626" }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                    {isFull && isPending && (
+                      <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "6px" }}>Approve is disabled when capacity is full.</p>
                     )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
-
-            {selectedAppointment && (
-              <div className="staff-modal">
-                <div className="staff-modal-content">
-                  <button
-                    className="staff-close-button"
-                    type="button"
-                    onClick={() => setSelectedAppointment(null)}
-                  >
-                    ×
-                  </button>
-
-                  <h2>
-                    Schedule Appointment #{selectedAppointment.appointment_id}
-                  </h2>
-
-                  <p>
-                    <strong>Patient:</strong>{" "}
-                    {selectedAppointment.patient_name}
-                  </p>
-                  <p>
-                    <strong>Doctor:</strong> Dr. {selectedAppointment.doctor_name}
-                  </p>
-
-                  <p style={{ background: "#fffbeb", border: "1px solid #fcd34d", padding: "10px", borderRadius: "6px", fontSize: "13px" }}>
-                    <strong>Note:</strong> Staff cannot create doctor schedules. Doctor must create slots between <strong>12:01 AM - 3:00 AM</strong> for tomorrow. You only assign hospital + pick an available slot.
-                  </p>
-                  <form className="staff-form" onSubmit={submitSchedule}>
-                    <label htmlFor="hospital_id">Hospital *</label>
-                    <select
-                      id="hospital_id"
-                      value={scheduleForm.hospital_id}
-                      onChange={(event) =>
-                        setScheduleForm({
-                          ...scheduleForm,
-                          hospital_id: event.target.value,
-                        })
-                      }
-                      required
-                    >
-                      <option value="">Select hospital</option>
-                      {hospitals.map((hospital) => (
-                        <option
-                          key={hospital.hospital_id}
-                          value={hospital.hospital_id}
-                        >
-                          {hospital.hospital_name} - {hospital.city}
-                        </option>
-                      ))}
-                    </select>
-
-                    <label htmlFor="schedule_id">Available Doctor Slot *</label>
-                    <select
-                      id="schedule_id"
-                      value={scheduleForm.schedule_id}
-                      onChange={(event) =>
-                        setScheduleForm({
-                          ...scheduleForm,
-                          schedule_id: event.target.value,
-                        })
-                      }
-                      required
-                    >
-                      <option value="">Select slot</option>
-                      {availableSlots.length === 0 ? (
-                        <option disabled>No available slots for this doctor - ask doctor to create between 12:01-03:00</option>
-                      ) : (
-                        availableSlots.map((slot) => (
-                          <option key={slot.schedule_id} value={slot.schedule_id}>
-                            {String(slot.available_date).split("T")[0]} {String(slot.start_time).slice(0,5)}-{String(slot.end_time).slice(0,5)} {slot.hospital_name?`@ ${slot.hospital_name}`:''} ({slot.slot_status})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    {availableSlots.length > 0 && (
-                      <p style={{ fontSize: "12px", color: "#6b7280" }}>Showing {availableSlots.length} available slot(s). Expired/unavailable/booked are hidden.</p>
-                    )}
-
-                    <button
-                      className="staff-primary-button staff-full-button"
-                      type="submit"
-                      disabled={loading || availableSlots.length === 0}
-                    >
-                      {loading ? "Saving..." : "Save Schedule"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
           </section>
         )}
 

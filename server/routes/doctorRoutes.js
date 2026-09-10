@@ -88,6 +88,10 @@ const {
   createDoctorComplaint,
   getDoctorComplaints,
 
+  getMyStaff,
+  getAvailableStaff,
+  assignStaff,
+
 } = require("../controllers/doctorController");
 
 const {
@@ -386,6 +390,14 @@ router.put("/schedules/:id", updateSchedule);
 router.delete("/schedules/:id", deleteSchedule);
 
 router.patch("/schedules/:id/availability", updateAvailability);
+
+// =====================================================
+// STAFF ASSIGNMENT (Primary + Temporary)
+// =====================================================
+
+router.get("/my-staff", getMyStaff);
+router.get("/available-staff", getAvailableStaff);
+router.post("/assign-staff", assignStaff);
 
 
 // =====================================================
