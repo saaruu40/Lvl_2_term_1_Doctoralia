@@ -58,6 +58,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const doctorController = require("../controllers/doctorController");
 
 const authMiddleware =
   require("../middleware/authMiddleware");
@@ -398,6 +399,18 @@ router.patch("/schedules/:id/availability", updateAvailability);
 router.get("/my-staff", getMyStaff);
 router.get("/available-staff", getAvailableStaff);
 router.post("/assign-staff", assignStaff);
+router.post(
+  "/add-medicine",
+  authMiddleware,
+  doctorController.addMedicine
+);
+
+
+router.post(
+  "/add-test",
+  authMiddleware,
+  doctorController.addTest
+);
 
 
 // =====================================================

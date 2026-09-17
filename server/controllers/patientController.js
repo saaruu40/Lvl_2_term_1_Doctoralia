@@ -803,8 +803,8 @@ const makePayment = async (req, res) => {
 
          WHERE a.appointment_id = $1
 
-         FOR UPDATE`,
-        [appointment_id]
+      FOR UPDATE OF a`,
+         [appointment_id]
       );
 
     if (

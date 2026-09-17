@@ -4,7 +4,7 @@ const pool = require("../config/db");
 const getDepartments = async (req, res) => {
   try {
     const { search } = req.query;
-    let query = `SELECT department_id, department_name, description FROM department`;
+    let query = `SELECT department_id, department_name, description,status FROM department`;
     const values = [];
     if (search && search.trim()) {
       query += ` WHERE LOWER(department_name) LIKE LOWER($1)`;

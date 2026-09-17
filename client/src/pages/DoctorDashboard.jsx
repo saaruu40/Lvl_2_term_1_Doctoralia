@@ -27,6 +27,9 @@ const authFetch = async (url, options = {}) => {
 
 function DoctorDashboard() {
   const navigate = useNavigate();
+  const [newMedicine,setNewMedicine]=useState("");
+
+const [newTest,setNewTest]=useState("");
 
 
   // =====================================================
@@ -74,8 +77,117 @@ function DoctorDashboard() {
 
   const [tests, setTests] =
     useState([]);
+const addCustomMedicine = async()=>{
 
 
+if(!newMedicine.trim())
+return;
+
+
+try{
+
+
+const response =
+await authFetch(
+`${API}/add-medicine`,
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+medicine_name:newMedicine
+
+})
+
+});
+
+
+const data=await response.json();
+
+
+
+if(response.ok){
+
+setMedicines([
+...medicines,
+data.medicine
+]);
+
+
+setNewMedicine("");
+
+}
+
+
+}catch(error){
+
+console.log(error);
+
+}
+
+
+};
+const addCustomTest = async()=>{
+
+
+if(!newTest.trim())
+return;
+
+
+try{
+
+
+const response =
+await authFetch(
+`${API}/add-test`,
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json"
+},
+
+body:JSON.stringify({
+
+test_name:newTest
+
+})
+
+});
+
+
+const data=
+await response.json();
+
+
+
+if(response.ok){
+
+setTests([
+...tests,
+data.test
+]);
+
+
+setNewTest("");
+
+}
+
+
+}catch(error){
+
+console.log(error);
+
+}
+
+
+};
   // =====================================================
   // PRESCRIPTION
   // =====================================================
@@ -219,9 +331,12 @@ function DoctorDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Could not assign staff.");
-      showMessage(data.message, "success");
+      //showMessage(data.message, "success");
+      setMessage(data.message);
+setMessageType("success");
       await Promise.all([loadMyStaff(), loadAvailableStaff()]);
-    } catch (e) { showMessage(e.message, "error"); }
+    } catch (e) { //showMessage(e.message, "error");setMessage(e.message);
+setMessageType("error"); }
   };
 
   // Schedule dropdown: load authenticated doctor's NEXT-DAY schedules, select to fix/edit (window-gated)
@@ -1801,8 +1916,8 @@ function DoctorDashboard() {
                           Date:
                         </strong>{" "}
 
-                        {
-                          appointment
+                        {/* {
+                         appointment
                             .available_date
 
                             ? new Date(
@@ -1812,7 +1927,12 @@ function DoctorDashboard() {
                                 .toLocaleDateString()
 
                             : "Not scheduled"
-                        }
+                        } */}
+                        {
+  appointment.available_date
+    ? String(appointment.available_date).split("T")[0]
+    : "Not scheduled"
+}
                       </p>
 
 
@@ -2992,7 +3112,32 @@ function DoctorDashboard() {
                 Medicines
               </h3>
 
+            <div>
 
+<input
+
+placeholder="Write new medicine name"
+
+value={newMedicine}
+
+onChange={(e)=>
+setNewMedicine(e.target.value)
+}
+
+/>
+
+
+<button
+type="button"
+onClick={addCustomMedicine}
+>
+
++ Add New Medicine
+
+</button>
+
+
+</div>
               {selectedMedicines.map(
                 (item, index) => (
 
@@ -3149,6 +3294,35 @@ function DoctorDashboard() {
               <h3>
                 Tests
               </h3>
+              <div>
+
+<input
+
+placeholder="Write new test name"
+
+value={newTest}
+
+onChange={(e)=>
+setNewTest(e.target.value)
+}
+
+/>
+
+
+<button
+
+type="button"
+
+onClick={addCustomTest}
+
+>
+
++ Add New Test
+
+</button>
+
+
+</div>
 
 
               {selectedTests.map(

@@ -2543,6 +2543,133 @@ const assignStaff = async (req, res) => {
     client.release();
   }
 };
+const addMedicine = async (req,res)=>{
+
+try{
+
+const {
+medicine_name,
+strength,
+medicine_type
+}=req.body;
+
+
+if(!medicine_name){
+return res.status(400).json({
+message:"Medicine name required"
+});
+}
+
+
+const result = await pool.query(
+
+`
+INSERT INTO medicine
+(
+medicine_name,
+strength,
+medicine_type
+)
+
+VALUES($1,$2,$3)
+
+RETURNING *
+`,
+
+[
+medicine_name,
+strength || "",
+medicine_type || ""
+]
+
+);
+
+
+res.json({
+message:"Medicine added",
+medicine:result.rows[0]
+});
+
+
+}catch(error){
+
+console.log(error);
+
+res.status(500).json({
+message:"Server error"
+});
+
+}
+
+};
+const addTest = async(req,res)=>{
+
+try{
+
+
+const {
+test_name,
+description,
+estimated_cost
+}=req.body;
+
+
+
+if(!test_name){
+
+return res.status(400).json({
+message:"Test name required"
+});
+
+}
+
+
+
+const result = await pool.query(
+
+`
+INSERT INTO test
+(
+test_name,
+description,
+estimated_cost
+)
+
+VALUES($1,$2,$3)
+
+RETURNING *
+`,
+
+[
+test_name,
+description || "",
+estimated_cost || 0
+]
+
+);
+
+
+
+res.json({
+
+message:"Test added",
+test:result.rows[0]
+
+});
+
+
+}catch(error){
+
+console.log(error);
+
+res.status(500).json({
+message:"Server error"
+});
+
+}
+
+
+};
 
 module.exports = {
   applyDoctor,
@@ -2563,4 +2690,6 @@ module.exports = {
   getMyStaff,
   getAvailableStaff,
   assignStaff,
+   addMedicine,
+    addTest
 };

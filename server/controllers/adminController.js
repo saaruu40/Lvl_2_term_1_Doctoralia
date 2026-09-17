@@ -619,7 +619,7 @@ const getStaffHistory = async (req, res) => {
 const getDepartments = async (req, res) => {
   try {
     const { search } = req.query;
-    let query = `SELECT department_id, department_name, description FROM department`;
+    let query = `SELECT department_id, department_name, description,status FROM department`;
     const values = [];
     if (search && search.trim()) {
       query += ` WHERE LOWER(department_name) LIKE LOWER($1)`;
@@ -764,30 +764,66 @@ const updateDepartment = async (req, res) => {
 // DELETE DEPARTMENT
 // =====================================================
 
-const deleteDepartment = async (req, res) => {
+// const deleteDepartment = async (req, res) => {
+//   try {
+//     const departmentId = req.params.id;
+
+//     const doctorCheck = await pool.query(
+//       `SELECT COUNT(*)
+//        FROM doctor
+//        WHERE department_id = $1`,
+//       [departmentId]
+//     );
+
+//     if (Number(doctorCheck.rows[0].count) > 0) {
+//       return res.status(409).json({
+//         message:
+//           "This department cannot be deleted because doctors are assigned to it.",
+//       });
+//     }
+
+//     const result = await pool.query(
+//       `DELETE FROM department
+//        WHERE department_id = $1
+//        RETURNING department_id`,
+//       [departmentId]
+//     );
+
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({
+//         message: "Department not found.",
+//       });
+//     }
+
+//     return res.status(200).json({
+//       message: "Department deleted successfully.",
+//     });
+
+//   } catch (error) {
+//     console.error(error);
+
+//     return res.status(500).json({
+//       message: "Could not delete department.",
+//       error: error.message,
+//     });
+//   }
+// };
+
+const disableDepartment = async (req, res) => {
   try {
+
     const departmentId = req.params.id;
 
-    const doctorCheck = await pool.query(
-      `SELECT COUNT(*)
-       FROM doctor
-       WHERE department_id = $1`,
-      [departmentId]
-    );
-
-    if (Number(doctorCheck.rows[0].count) > 0) {
-      return res.status(409).json({
-        message:
-          "This department cannot be deleted because doctors are assigned to it.",
-      });
-    }
-
     const result = await pool.query(
-      `DELETE FROM department
-       WHERE department_id = $1
-       RETURNING department_id`,
+      `
+      UPDATE department
+      SET status = 'inactive'
+      WHERE department_id = $1
+      RETURNING department_id
+      `,
       [departmentId]
     );
+
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -795,21 +831,63 @@ const deleteDepartment = async (req, res) => {
       });
     }
 
+
     return res.status(200).json({
-      message: "Department deleted successfully.",
+      message: "Department disabled successfully.",
     });
 
+
   } catch (error) {
+
     console.error(error);
 
     return res.status(500).json({
-      message: "Could not delete department.",
+      message: "Could not disable department.",
       error: error.message,
     });
+
   }
 };
+const enableDepartment = async (req, res) => {
+  try {
+
+    const departmentId = req.params.id;
 
 
+    const result = await pool.query(
+      `
+      UPDATE department
+      SET status = 'active'
+      WHERE department_id = $1
+      RETURNING department_id
+      `,
+      [departmentId]
+    );
+
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: "Department not found.",
+      });
+    }
+
+
+    return res.status(200).json({
+      message: "Department enabled successfully.",
+    });
+
+
+  } catch (error) {
+
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Could not enable department.",
+      error: error.message,
+    });
+
+  }
+};
 // =====================================================
 // GET ALL COMPLAINTS
 // =====================================================
@@ -1276,7 +1354,9 @@ module.exports = {
   getDepartments,
   addDepartment,
   updateDepartment,
-  deleteDepartment,
+  disableDepartment,
+ enableDepartment,
+
 
   getComplaints,
   createComplaint,

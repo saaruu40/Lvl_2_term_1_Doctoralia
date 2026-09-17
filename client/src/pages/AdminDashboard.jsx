@@ -585,7 +585,59 @@ function AdminDashboard() {
     }
   };
 
+  const disableDepartment = async (departmentId) => {
+  try {
 
+    const response = await authFetch(
+      `${API}/departments/${departmentId}/disable`,
+      {
+        method: "PUT",
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message);
+    }
+
+    setMessage(data.message);
+
+    await loadDepartments(deptSearch);
+    await loadStats();
+
+  } catch (error) {
+    setMessage(error.message);
+  }
+};
+
+
+
+const enableDepartment = async (departmentId) => {
+  try {
+
+    const response = await authFetch(
+      `${API}/departments/${departmentId}/enable`,
+      {
+        method: "PUT",
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message);
+    }
+
+    setMessage(data.message);
+
+    await loadDepartments(deptSearch);
+    await loadStats();
+
+  } catch (error) {
+    setMessage(error.message);
+  }
+};
   // ============================
   // LOGOUT
   // ============================
@@ -1356,7 +1408,7 @@ function AdminDashboard() {
                       >
                         Edit
                       </button>
-
+{/* 
                       <button
                         className="reject-button"
                         onClick={() =>
@@ -1366,7 +1418,34 @@ function AdminDashboard() {
                         }
                       >
                         Delete
-                      </button>
+                      </button> */}
+                      {department.status === "active" ? (
+
+  <button 
+    className="reject-button"
+    onClick={() => 
+      disableDepartment(
+        department.department_id
+      )
+    }
+  >
+    Disable
+  </button>
+
+) : (
+
+  <button 
+    className="approve-button"
+    onClick={() => 
+      enableDepartment(
+        department.department_id
+      )
+    }
+  >
+    Enable
+  </button>
+
+)}
 
                     </div>
 

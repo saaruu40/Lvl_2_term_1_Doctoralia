@@ -1,6 +1,7 @@
 const express = require("express");
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
+const adminController = require("../controllers/adminController");
 
 const {
   registerAdmin,
@@ -98,7 +99,16 @@ router.patch(
 router.get("/departments", authMiddleware,roleMiddleware("admin"),getDepartments);
 router.post("/departments",authMiddleware, roleMiddleware("admin"),addDepartment);
 router.put("/departments/:id",authMiddleware,roleMiddleware("admin"), updateDepartment);
-router.delete("/departments/:id",authMiddleware,roleMiddleware("admin"), deleteDepartment);
+//router.delete("/departments/:id",authMiddleware,roleMiddleware("admin"), deleteDepartment);
+router.put(
+"/departments/:id/disable",
+adminController.disableDepartment
+);
 
+
+router.put(
+"/departments/:id/enable",
+adminController.enableDepartment
+);
 
 module.exports = router;
