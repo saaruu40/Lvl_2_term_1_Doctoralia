@@ -420,7 +420,8 @@ const getAvailableDoctorsByDate = async (req, res) => {
         `SELECT s.available_date, s.end_time FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id WHERE ds.doctor_id=$1 AND ds.status='AVAILABLE' AND s.available_date=$2`,
         [doc.doctor_id, date]
       );
-      const hasAvailable = slots.rows.some(s => !isSlotExpired(s.available_date, s.end_time, now));
+      const hasAvailable = slots.rows.length > 0;
+      //const hasAvailable = slots.rows.some(s => !isSlotExpired(s.available_date, s.end_time, now));
       if (hasAvailable) filtered.push(doc);
     }
 
@@ -444,7 +445,7 @@ const getAvailableSchedulesByDate = async (req, res) => {
     const now = new Date();
 
     const result = await pool.query(
-      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, h.hospital_name, h.city
+      `SELECT s.schedule_id, TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, h.hospital_name, h.city
        FROM schedule s
        JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
        LEFT JOIN hospital h ON s.hospital_id=h.hospital_id
@@ -452,7 +453,9 @@ const getAvailableSchedulesByDate = async (req, res) => {
        ORDER BY s.start_time ASC`,
       [doctorId, date]
     );
-    const available = result.rows.filter(s => !isSlotExpired(s.available_date, s.end_time, now));
+   
+    const available = result.rows;
+    //const available = result.rows.filter(s => !isSlotExpired(s.available_date, s.end_time, now));
     return res.status(200).json({ schedules: available, date, doctor_id: Number(doctorId) });
   } catch (error) {
     console.error("getAvailableSchedulesByDate error:", error);
@@ -521,7 +524,7 @@ const createAppointment = async (req, res) => {
 
     // Validate schedule belongs to doctor and is AVAILABLE and not expired - lock row
     const slotRes = await client.query(
-      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status
+      `SELECT s.schedule_id,TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status
        FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
        WHERE s.schedule_id=$1 AND ds.doctor_id=$2 FOR UPDATE`,
       [schedule_id, doctor_id]
@@ -786,7 +789,7 @@ const makePayment = async (req, res) => {
           d.new_patient_fee,
           d.followup_fee,
 
-          s.available_date,
+          TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date,
           s.end_time,
           ds.status as slot_status
 

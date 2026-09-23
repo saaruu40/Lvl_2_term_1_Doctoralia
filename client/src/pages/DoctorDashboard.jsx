@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import "../styles/DoctorDashboard.css";
 
@@ -46,6 +47,7 @@ const [newTest,setNewTest]=useState("");
     useState("");
   const [messageType, setMessageType] =
     useState("success");
+    const [notifications,setNotifications]=useState([]);
 
 
   // =====================================================
@@ -322,6 +324,66 @@ console.log(error);
       if (res.ok) setAvailableStaff(data.staff || []);
     } catch {}
   };
+//   const loadNotifications = async()=>{
+
+// try{
+
+// const res = await axios.get(
+// `http://localhost:5000/api/notifications/doctor/${storedDoctor.doctor_id}`
+// );
+
+
+// setNotifications(
+// res.data.notifications
+// );
+
+
+// }
+
+// catch(error){
+
+// console.log(
+// "Notification error",
+// error
+// );
+
+// }
+
+// };
+const loadNotifications = async()=>{
+
+try{
+
+const storedDoctor = JSON.parse(
+ localStorage.getItem("doctor")
+);
+
+
+if(!storedDoctor?.doctor_id)
+return;
+
+
+const res = await axios.get(
+`http://localhost:5000/api/notifications/doctor/${storedDoctor.doctor_id}`
+);
+
+
+setNotifications(
+res.data.notifications || []
+);
+
+
+}
+catch(error){
+
+console.log(
+"Notification error",
+error
+);
+
+}
+
+};
   const handleAssignStaff = async (staffId) => {
     try {
       const res = await authFetch(`${API}/assign-staff`, {
@@ -499,6 +561,7 @@ setMessageType("error"); }
     loadHospitals();
     loadMyStaff();
     loadAvailableStaff();
+    loadNotifications();
 
   }, [doctor?.doctor_id]);
 
@@ -2476,7 +2539,44 @@ setMessageType("error"); }
 
           </section>
         )}
+<div className="notification-box">
 
+<h3>
+Notifications
+</h3>
+
+
+{
+notifications.length===0?
+
+<p>No notifications</p>
+
+:
+
+notifications.map((n)=>(
+
+<div key={n.notification_id}>
+
+<h4>
+{n.title}
+</h4>
+
+<p>
+{n.message}
+</p>
+
+<small>
+{new Date(n.created_at).toLocaleString()}
+</small>
+
+</div>
+
+))
+
+}
+
+
+</div>
 
         {/* =============================
             COMPLAINT

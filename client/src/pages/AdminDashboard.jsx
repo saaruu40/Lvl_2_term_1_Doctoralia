@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/AdminDashboard.css";
 import logo from "../assets/logo.jfif";
-
+import axios from "axios";
 const API = "http://localhost:5000/api/admin";
 
 const authFetch = async (url, options = {}) => {
@@ -44,6 +44,7 @@ function AdminDashboard() {
   const [approvedStaff, setApprovedStaff] = useState([]);
   const [suspendedStaff, setSuspendedStaff] = useState([]);
   const [availableStaff, setAvailableStaff] = useState([]);
+  const [notifications,setNotifications]=useState([]);
 
   const [doctorHistory, setDoctorHistory] =
     useState([]);
@@ -104,6 +105,7 @@ function AdminDashboard() {
       loadStaffHistory(),
       loadDepartments(),
       loadComplaints(),
+      loadNotifications()
     ]);
   };
 
@@ -127,7 +129,32 @@ function AdminDashboard() {
       console.error(error);
     }
   };
+const loadNotifications = async()=>{
 
+try{
+
+const res = await axios.get(
+`http://localhost:5000/api/notifications/admin/${storedAdmin.admin_id}`
+);
+
+
+setNotifications(
+res.data.notifications
+);
+
+
+}
+
+catch(error){
+
+console.log(
+"Notification error",
+error
+);
+
+}
+
+};
 
   const loadPendingDoctors = async () => {
     try {
@@ -1270,6 +1297,44 @@ const enableDepartment = async (departmentId) => {
 
           </>
         )}
+        <div className="notification-box">
+
+<h3>
+Notifications
+</h3>
+
+
+{
+notifications.length===0?
+
+<p>No notifications</p>
+
+:
+
+notifications.map((n)=>(
+
+<div key={n.notification_id}>
+
+<h4>
+{n.title}
+</h4>
+
+<p>
+{n.message}
+</p>
+
+<small>
+{new Date(n.created_at).toLocaleString()}
+</small>
+
+</div>
+
+))
+
+}
+
+
+</div>
 
 
         {/* DEPARTMENTS */}

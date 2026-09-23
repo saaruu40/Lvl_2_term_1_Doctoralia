@@ -389,3 +389,351 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_active_temporary ON staff_assignment(doctor
 CREATE INDEX IF NOT EXISTS idx_staff_assignment_staff ON staff_assignment(staff_id);
 CREATE INDEX IF NOT EXISTS idx_staff_assignment_doctor ON staff_assignment(doctor_id);
 CREATE INDEX IF NOT EXISTS idx_staff_assignment_status ON staff_assignment(status);
+
+
+CREATE TABLE notification
+(
+    notification_id SERIAL PRIMARY KEY,
+
+    receiver_role VARCHAR(20),
+
+    receiver_id INT,
+
+    title VARCHAR(100),
+
+    message TEXT,
+
+    related_type VARCHAR(50),
+
+    related_id INT,
+
+    is_read BOOLEAN DEFAULT FALSE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE OR REPLACE FUNCTION appointment_status_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+BEGIN
+
+
+IF OLD.appointment_status <> NEW.appointment_status
+THEN
+
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'patient',
+NEW.patient_id,
+'Appointment Update',
+'Your appointment status changed to '
+|| NEW.appointment_status,
+'appointment',
+NEW.appointment_id
+);
+
+
+END IF;
+
+
+RETURN NEW;
+
+
+END;
+
+$$;
+
+CREATE TRIGGER trg_appointment_status_notification
+
+AFTER UPDATE OF appointment_status
+
+ON appointment
+
+FOR EACH ROW
+
+EXECUTE FUNCTION appointment_status_notification();
+
+CREATE OR REPLACE FUNCTION patient_registration_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+BEGIN
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'patient',
+NEW.patient_id,
+'Welcome to Doctoralia',
+'Your patient account has been created successfully.',
+'patient',
+NEW.patient_id
+);
+
+
+RETURN NEW;
+
+END;
+
+$$;
+
+CREATE TRIGGER trg_patient_registration
+
+AFTER INSERT
+
+ON patient
+
+FOR EACH ROW
+
+EXECUTE FUNCTION patient_registration_notification();
+
+CREATE OR REPLACE FUNCTION payment_success_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+DECLARE
+
+p_id INT;
+
+BEGIN
+
+
+SELECT patient_id
+INTO p_id
+FROM appointment
+WHERE appointment_id = NEW.appointment_id;
+
+
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'patient',
+p_id,
+'Payment Successful',
+'Your payment has been completed successfully.',
+'payment',
+NEW.payment_id
+);
+
+
+
+RETURN NEW;
+
+
+END;
+
+$$;
+
+CREATE TRIGGER trg_payment_success
+
+AFTER INSERT
+
+ON payment
+
+FOR EACH ROW
+
+EXECUTE FUNCTION payment_success_notification();
+
+CREATE OR REPLACE FUNCTION prescription_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+DECLARE
+
+p_id INT;
+
+
+BEGIN
+
+
+SELECT patient_id
+
+INTO p_id
+
+FROM appointment
+
+WHERE appointment_id = NEW.appointment_id;
+
+
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'patient',
+p_id,
+'New Prescription',
+'Doctor has added a new prescription.',
+'prescription',
+NEW.prescription_id
+);
+
+
+
+RETURN NEW;
+
+
+END;
+
+$$;
+CREATE TRIGGER trg_prescription_notification
+
+AFTER INSERT
+
+ON prescription
+
+FOR EACH ROW
+
+EXECUTE FUNCTION prescription_notification();
+
+CREATE OR REPLACE FUNCTION referral_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+BEGIN
+
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'patient',
+NEW.patient_id,
+'New Referral',
+'You have received a new doctor referral.',
+'referral',
+NEW.referral_id
+);
+
+
+
+RETURN NEW;
+
+
+END;
+
+$$;
+CREATE TRIGGER trg_referral_notification
+
+AFTER INSERT
+
+ON referral
+
+FOR EACH ROW
+
+EXECUTE FUNCTION referral_notification();
+
+CREATE OR REPLACE FUNCTION complaint_admin_notification()
+
+RETURNS TRIGGER
+
+LANGUAGE plpgsql
+
+AS $$
+
+BEGIN
+
+
+INSERT INTO notification
+(
+receiver_role,
+receiver_id,
+title,
+message,
+related_type,
+related_id
+)
+
+VALUES
+(
+'admin',
+1,
+'New Complaint',
+'A new complaint has been submitted.',
+'complaint',
+NEW.complaint_id
+);
+
+
+
+RETURN NEW;
+
+
+END;
+
+$$;
+CREATE TRIGGER trg_complaint_admin
+
+AFTER INSERT
+
+ON complaint
+
+FOR EACH ROW
+
+EXECUTE FUNCTION complaint_admin_notification();

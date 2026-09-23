@@ -84,7 +84,7 @@ const getMySchedules = async (req, res) => {
     const yearEnd = getYearEndDateStr(nowForFilter);
     // Same-year list: any schedule from tomorrow through Dec 31 of same Dhaka year (previous days hidden)
     const result = await pool.query(
-      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, s.created_at, s.updated_at,
+      `SELECT s.schedule_id, TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, s.created_at, s.updated_at,
               ds.status as slot_status, ds.doctor_id,
               h.hospital_name, h.city
        FROM schedule s
@@ -102,7 +102,8 @@ const getMySchedules = async (req, res) => {
       let computedStatus = s.slot_status;
       if (expired && s.slot_status === "AVAILABLE") computedStatus = "expired";
       if (expired) computedStatus = s.slot_status === "WORKING" ? "WORKING" : s.slot_status === "UNAVAILABLE" ? "UNAVAILABLE" : "expired";
-      const dateStr = String(s.available_date).split("T")[0];
+      //const dateStr = String(s.available_date).split("T")[0];
+      const dateStr = s.available_date;
       const is_tomorrow = dateStr === windowStatus.targetDate;
       // Q2: if window is over (not open), tomorrow's AVAILABLE slots display as UNAVAILABLE
       if (is_tomorrow && !windowStatus.isOpen && !expired && computedStatus === "AVAILABLE") {

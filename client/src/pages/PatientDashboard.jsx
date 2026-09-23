@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import axios from "axios";
 import "../styles/PatientDashboard.css";
 
 const API =
@@ -63,13 +63,40 @@ const [referrals, setReferrals] =
   const [selectedDoctor,
     setSelectedDoctor] =
     useState(null);
-
+  const [notifications,setNotifications]=useState([]);
   // New booking flow: Date -> Doctors -> Schedules
   const [bookingDate, setBookingDate] = useState("");
   const [bookingDoctors, setBookingDoctors] = useState([]);
   const [bookingDoctorId, setBookingDoctorId] = useState("");
   const [bookingSchedules, setBookingSchedules] = useState([]);
   const [bookingScheduleId, setBookingScheduleId] = useState("");
+
+  const loadNotifications = async()=>{
+
+try{
+
+const res = await axios.get(
+`http://localhost:5000/api/notifications/patient/${patient.patient_id}`
+);
+
+console.log("Notification data:", res.data.notifications);
+setNotifications(
+res.data.notifications
+);
+
+
+}
+
+catch(error){
+
+console.log(
+"Notification error",
+error
+);
+
+}
+
+};
 
   const loadBookingDoctors = async (date) => {
     if (!date) { setBookingDoctors([]); return; }
@@ -174,6 +201,7 @@ const [referrals, setReferrals] =
     loadStaff();
     loadPrescriptions();
 loadReferrals();
+loadNotifications();
 
   }, [patient?.patient_id]);
 
@@ -1292,7 +1320,44 @@ const loadReferrals = async () => {
           </section>
         )}
 
+ <div className="notification-box">
 
+<h3>
+Notifications
+</h3>
+
+
+{
+notifications.length===0?
+
+<p>No notifications</p>
+
+:
+
+notifications.map((n)=>(
+
+<div key={n.notification_id}>
+
+<h4>
+{n.title}
+</h4>
+
+<p>
+{n.message}
+</p>
+
+<small>
+{new Date(n.created_at).toLocaleString()}
+</small>
+
+</div>
+
+))
+
+}
+
+
+</div>
         {/* APPOINTMENTS */}
 
         {section === "appointments" && (

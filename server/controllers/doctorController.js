@@ -671,7 +671,7 @@ const getDoctorAppointments = async (req, res) => {
         h.city,
         h.address AS hospital_address,
         s.schedule_id,
-        s.available_date,
+    TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date,
         s.start_time,
         s.end_time,
         pay.payment_id,

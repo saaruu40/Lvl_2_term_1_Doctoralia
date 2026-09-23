@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import "../styles/StaffDashboard.css";
 
@@ -27,6 +28,7 @@ function StaffDashboard() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
   const [loading, setLoading] = useState(false);
+  const [notifications,setNotifications]=useState([]);
 
   const [complaintForm, setComplaintForm] = useState({
     against_type: "patient",
@@ -153,7 +155,39 @@ function StaffDashboard() {
       setComplaints(data.complaints || []);
     }
   };
+const loadNotifications = async()=>{
 
+try{
+const storedStaff = JSON.parse(
+ localStorage.getItem("staff")
+);
+
+
+if(!storedStaff?.staff_id)
+return;
+
+const res = await axios.get(
+`http://localhost:5000/api/notifications/staff/${storedStaff.staff_id}`
+);
+
+
+setNotifications(
+res.data.notifications
+);
+
+
+}
+
+catch(error){
+
+console.log(
+"Notification error",
+error
+);
+
+}
+
+};
   const loadMyAssignment = async () => {
     try {
       const response = await authFetch(`${API}/my-assignment`);
@@ -172,6 +206,7 @@ function StaffDashboard() {
         loadComplaintTargets(),
         loadComplaints(),
         loadMyAssignment(),
+        loadNotifications(),
       ]);
     } catch (error) {
       if (error.message) {
@@ -662,7 +697,44 @@ function StaffDashboard() {
             </div>
           </section>
         )}
+<div className="notification-box">
 
+<h3>
+Notifications
+</h3>
+
+
+{
+notifications.length===0?
+
+<p>No notifications</p>
+
+:
+
+notifications.map((n)=>(
+
+<div key={n.notification_id}>
+
+<h4>
+{n.title}
+</h4>
+
+<p>
+{n.message}
+</p>
+
+<small>
+{new Date(n.created_at).toLocaleString()}
+</small>
+
+</div>
+
+))
+
+}
+
+
+</div>
         {section === "profile" && (
           <section>
             <h1>My Profile</h1>

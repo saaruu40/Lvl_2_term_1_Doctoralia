@@ -826,7 +826,7 @@ const scheduleAppointment =
 
       const scheduleResultCheck =
         await client.query(
-          `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, ds.doctor_id
+          `SELECT s.schedule_id,  TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, ds.doctor_id
            FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
            WHERE s.schedule_id = $1 AND ds.doctor_id=$2 FOR UPDATE`,
           [schedule_id, appointment.doctor_id]
@@ -955,7 +955,7 @@ const approveAppointment = async (req, res) => {
 
     // 8. schedule belongs to doctor - lock schedule row for race
     const scheduleLock = await client.query(
-      `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status
+      `SELECT s.schedule_id, TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status
        FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id
        WHERE s.schedule_id=$1 AND ds.doctor_id=$2 FOR UPDATE`, [appt.schedule_id, appt.doctor_id]
     );
