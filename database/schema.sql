@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS department (
     department_name VARCHAR(100),
     description TEXT,
     created_by INTEGER,
+    status VARCHAR(50),
 
     CONSTRAINT fk_department_created_by
         FOREIGN KEY (created_by)
