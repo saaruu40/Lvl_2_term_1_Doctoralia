@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+//import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import "../styles/AdminDashboard.css";
 import logo from "../assets/logo.jfif";
 import axios from "axios";
@@ -717,7 +718,12 @@ const enableDepartment = async (departmentId) => {
           Doctoralia
           <span>Admin Panel</span>
         </div>
-
+ <Link
+          to="/"
+          style={{ display: "block", padding: "10px 16px", color: "inherit", textDecoration: "none" }}
+        >
+          🏠 Back to Home
+        </Link>
         <button
           onClick={() =>
             setSection("dashboard")

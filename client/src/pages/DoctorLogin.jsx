@@ -167,6 +167,9 @@ const DoctorLogin = () => {
     return (
       <div className="doctor-auth-page">
         <div className="doctor-login-card">
+          <Link to="/" style={{ display: "inline-block", marginBottom: "14px", fontSize: "0.85rem", color: "#666", textDecoration: "none" }}>
+          ← Back to Home
+        </Link>
           <div className="doctor-auth-header">
             <h1>Doctor Login</h1>
             <p>You are already logged in. Please logout first.</p>
@@ -181,6 +184,9 @@ const DoctorLogin = () => {
   return (
     <div className="doctor-auth-page">
       <div className="doctor-login-card">
+        <Link to="/" style={{ display: "inline-block", marginBottom: "14px", fontSize: "0.85rem", color: "#666", textDecoration: "none" }}>
+          ← Back to Home
+        </Link>
         <div className="doctor-auth-header">
           <h1>Doctor Login</h1>
           <p>

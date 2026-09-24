@@ -98,6 +98,9 @@ const handleSubmit = async (event) => {
     return (
       <main className="admin-login-page">
         <section className="login-card">
+       <Link to="/" style={{ display: "inline-block", marginBottom: "14px", fontSize: "0.85rem", color: "#666", textDecoration: "none" }}>
+          ← Back to Home
+        </Link>
           <div className="login-heading">
             <h2>Admin Login</h2>
             <p>You are already logged in. Please logout first.</p>
@@ -112,6 +115,10 @@ const handleSubmit = async (event) => {
   return (
     <main className="admin-login-page">
       <section className="login-card">
+     <Link to="/" style={{ display: "inline-block", marginBottom: "14px", fontSize: "0.85rem", color: "#666", textDecoration: "none" }}>
+          ← Back to Home
+        </Link>
+
         <div className="login-heading">
           <h2>Admin Login</h2>
           <p>Login to your administrator account</p>

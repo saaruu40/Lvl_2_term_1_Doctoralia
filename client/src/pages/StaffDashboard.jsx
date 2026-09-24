@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import useInactivityLogout from "../hooks/useInactivityLogout";
 
@@ -349,6 +349,13 @@ error
       <aside className="staff-sidebar">
         <h2>Doctoralia</h2>
         <p className="staff-panel-title">Staff Panel</p>
+         <Link
+          to="/"
+          style={{ display: "block", padding: "10px 16px", color: "inherit", textDecoration: "none" }}
+        >
+          🏠 Back to Home
+        </Link>
+
 
         <button onClick={() => setSection("dashboard")}>Dashboard</button>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import useInactivityLogout from "../hooks/useInactivityLogout";
 
@@ -1655,7 +1655,12 @@ setMessageType("error"); }
           Doctor Panel
         </p>
 
-
+ <Link
+          to="/"
+          style={{ display: "block", padding: "10px 16px", color: "inherit", textDecoration: "none" }}
+        >
+          🏠 Back to Home
+        </Link>
         <button
           onClick={() =>
             setSection(
