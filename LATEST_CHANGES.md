@@ -146,3 +146,73 @@ Frontend Lvl2:
 - Schedule list section header changed to My Schedules — Next Day Only, Show Next-Day List, helper note about auto-clear and icon.
 
 Verification: \📅 ▾\ present in both frontends, history removed, backends filter next-day, appointments untouched.
+
+---
+
+## 9. Doctor Dashboard — Department Disabled Message (2026-09-24)
+
+**Requirement:** When doctor logs into Doctor Dashboard, if assigned department is disabled (`status='inactive'`), show only `"Your department is currently disabled."`.
+
+**Backend (minimal):**
+- `server/controllers/doctorController.js:466-468` `getDoctorProfile` — added `dep.status AS department_status` to existing `LEFT JOIN department` SELECT. Reuses `department.status` (`database/schema.sql:18` `active`/`inactive`) and existing `GET /api/doctors/profile` (`authMiddleware+roleMiddleware("doctor")`). No new route/table/trigger/procedure, no payment change.
+
+**Frontend (minimal):**
+- `client/src/pages/DoctorDashboard.jsx:1758` — added `{doctor?.department_status === 'inactive' && <p>Your department is currently disabled.</p>}` right under `doctor-main` banner. Simple inline style `fef2f2/fecaca/991b1b`. When `active`/`null` shows nothing. No redirect/popup/button/restriction; dashboard otherwise unchanged.
+
+**Trigger reused:** `database/schema.sql:750-777` `check_department_active_on_appointment` (`trg_appointment_department_check`) — existing, not modified/recreated. This task only displays message, not blocks.
+
+**What did NOT change:** Appointments, schedules, profile, auth/JWT (`expiresIn 1d`), department disable/enable logic (`adminController.js:812/851`), no new library, no file deleted, no unrelated API.
+
+---
+
+## 10. Home Page + DB Functions + Secure Booking (2026-09-24)
+
+**Home public (`/`):** New `Home.jsx` + `HomeNavbar.jsx` + `Home.css` + `DoctorProfile.jsx` (`/doctors/:id`). Navbar `Doctoralia | Home | Doctors | Departments | Account ▾ (Patient/Doctor/Staff/Admin)` via new `HomeNavbar.jsx` (keeps `Header.jsx` for other pages). 8 sections in order: Navbar, Doctor ad → `Link /doctor-registration`, Doctors Looking for Staff (fetch `GET /api/patients/doctors/looking-for-staff` → `get_doctors_without_staff()`), Find Your Doctor (search + dept filter via `GET /api/patients/doctors?search=&department_id=` + `GET /api/departments`), Browse by Department (fetch departments, click filters doctors), Why Doctoralia static, Emergency Contact (fetch `GET /api/admin/public-contact` → `{email}` only, fallback `sara@gmail.com`), Footer. Simple student UI, no lib, reuse `doctor-card` styles.
+
+**DB (append `database/schema.sql:777+`):**
+- `get_doctors_without_staff()` `RETURNS TABLE (doctor_id, full_name, department_name, profile_photo, qualification, specification)` — `WHERE approval_status='approved' AND suspended_until OK AND dep status active AND NOT EXISTS (SELECT 1 FROM staff_assignment WHERE doctor_id=d.doctor_id AND status='ACTIVE')` — no `needs_staff` column/trigger.
+- `calculate_appointment_fee(p_patient_id,p_doctor_id)` `RETURNS NUMERIC` — `EXISTS completed 90d` → `followup_fee` else `new_patient_fee` (uses `doctor.new_patient_fee/followup_fee:89-90`, `appointment_status='completed'`).
+- `book_appointment(p_patient_id,p_doctor_id,p_schedule_id,p_hospital_id, INOUT p_appointment_id)` `PROCEDURE` — validates doctor active, dept active (via `LEFT JOIN department`), schedule `AVAILABLE`, duplicate, capacity vs `max_patient_num`, then `INSERT pending` — keeps `isSlotExpired`/`assertTargetDateInSameYear` in `utils/scheduleWindow.js` (authority Node), no payment.
+
+**Backend:** `adminController.getAdminPublicContact` (`SELECT email FROM admin LIMIT 1`) + route `GET /api/admin/public-contact` public (no phone/password); `patientController.getDoctorsWithoutStaff` (`SELECT * FROM get_doctors_without_staff()`) + route `GET /api/patients/doctors/looking-for-staff` public (before `:id`); secure `POST /api/patients/appointments` with `authMiddleware,role(patient)` + `patient_id=req.user.patient_id` (not body) + fee via `SELECT calculate_appointment_fee($1,$2)` before COMMIT; keeps `BEGIN/COMMIT/ROLLBACK` and `P0001` dept trigger reuse (`trg_appointment_department_check:750-777`). No new trigger, no payment.
+
+**Frontend auth:** Browsing public, booking protected via `Authorization Bearer`; `DoctorProfile.jsx` reuses `GET /api/patients/doctors/:id` + `GET /doctors/:id/schedules` (`isSlotExpired` filtered server) and secured booking.
+
+**What NOT changed:** Existing `Header.jsx` kept (Home uses own navbar), no file deleted, no payment/Mock Gateway, no new lib, no duplicate schedule logic, existing triggers preserved.
+
+---
+
+## 11. Home Rebuild — Needs Staff Trigger + Nav-Only Booking (2026-09-24)
+
+**Appointment out of scope:** Home `Book Appointment` now navigation-only — no `book_appointment`/`calculate_appointment_fee` creation, no `POST /appointments` call from Home. Existing `POST /appointments` stays secured (`auth+role patient`, `req.user.patient_id`) but Home does not use it. `book_appointment` procedure dropped (was unused, zero CALLs); `calculate_appointment_fee` kept (used by existing appointment fee `patientController:591`).
+
+**DB:**
+- `doctor` add `needs_staff BOOLEAN DEFAULT FALSE` (`DO $$ IF NOT EXISTS`).
+- Trigger `trg_doctor_needs_staff` `BEFORE UPDATE OF approval_status ON doctor WHEN pending→approved` → `set_doctor_needs_staff()` sets `NEW.needs_staff=TRUE`.
+- Function `get_doctors_needing_staff()` `RETURNS TABLE` — `WHERE needs_staff=TRUE AND approved AND suspended OK AND dept active AND NOT EXISTS ACTIVE staff_assignment` → Home `GET /looking-for-staff` now uses this.
+
+**Backend:** `patientController.getDoctorsWithoutStaff` now `SELECT * FROM get_doctors_needing_staff()` (fallback to old if not migrated), endpoint path unchanged `/looking-for-staff` public.
+
+**Frontend:**
+- `Home.jsx` staff section title → `New Doctors Looking for Staff`, text `New doctors have recently joined...`, card shows `New Doctor` + `Staff Required` + `Register as Staff → /staff-registration`; find doctor adds searchable dropdown `Search or Select Doctor ▼` with `All Doctors` + filtered `Dr. name` on typing `rah`, dept dropdown + search work together.
+- `DoctorProfile.jsx` `Book Appointment` → `if !patient JWT → navigate /patient-login else navigate /patient-dashboard`, no API, no `patient_id`, no `POST`.
+
+**What NOT changed:** Appointment backend (`createAppointment` still secured, `isSlotExpired` untouched `scheduleWindow:183`), no new appointment trigger/procedure/fee, no file deleted, no new lib.
+
+---
+
+## 12. Generic Staff Required Advertisement — Fix False Ads (2026-09-24)
+
+**Problem:** Blind `pending→approved → needs_staff TRUE` created false ad even when staff immediately available and assigned.
+
+**Fix:**
+- DB: `set_doctor_needs_staff()` now conditional `NOT EXISTS ACTIVE` else FALSE + backfill; `sync_doctor_needs_staff()` + 3 `AFTER INSERT/UPDATE/DELETE ON staff_assignment` keeps `needs_staff` in sync (assigned→FALSE, ended→re-check); new `is_staff_required() BOOLEAN` = `EXISTS approved+dept active+suspended OK with NO ACTIVE assignment`.
+- Backend: `patientController.getStaffRequiredStatus` → `SELECT is_staff_required()` → `{staff_required:true|false}` + `GET /api/patients/staff-required` public (no doctor details).
+- Frontend: `Home.jsx` fetches `GET /staff-required` → `staffRequired` boolean; generic banner `📢 STAFF REQUIRED / Some doctors currently need available staff members / [Register as Staff → /staff-registration]` only when true, no `full_name/photo/dept` leaked. Old `looking-for-staff` kept deprecated for compat.
+
+**Cases:** A assigned→hidden (false), B none→visible (true), C later assigned→hidden, D multi one none→visible, E all have→hidden. Uses existing `staff_assignment` workflow (`POST /api/doctors/assign-staff`), no auto-assign invented.
+
+**ApiTester:** `patient.http 2.13/2.14`, `api-tests.http 5.10b`.
+**Docs:** `FILE_REVIEWS §12`, `LEARN_BACKEND`, `TRIGGERS.md` updated; no payment/appointment touched.
+
+**Verification:** `GET /staff-required` public, `SELECT is_staff_required()`, `SELECT doctor_id,needs_staff FROM doctor`, assignment → banner toggles; `npm run build` passes.

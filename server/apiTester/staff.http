@@ -1,0 +1,208 @@
+# =============================================================================
+# Staff â€” All Operations â€” Doctoralia
+# =============================================================================
+# Base: http://localhost:5000
+# Routes: server/routes/staffRoutes.js + server/controllers/staffController.js
+# Auth: JWT Bearer â€” role "staff", server/middleware/authMiddleware.js
+# Multer: uploads/staff, field profile_pic, 5MB, jpeg/jpg/png/webp
+#
+# HOW TO USE:
+#  1. POST /api/staff/login â†’ copy token â†’ paste into @staffToken
+#  2. Every ðŸ”’ block below sends Authorization: Bearer {{staffToken}}
+#  3. Staff must be approved by admin and assigned to a doctor to manage appointments
+# =============================================================================
+
+@baseUrl = http://localhost:5000
+@staffToken = PASTE_STAFF_JWT_HERE
+
+# -------------------------------------------------------------------------
+# 0. Health â€” public
+# -------------------------------------------------------------------------
+
+### 0.1 Root
+GET {{baseUrl}}/
+
+### 0.2 Test DB
+GET {{baseUrl}}/api/test-db
+
+# -------------------------------------------------------------------------
+# 1. Staff Auth â€” public
+# -------------------------------------------------------------------------
+
+### 1.1 Registration status â€” public â€” GET /api/staff/status
+GET {{baseUrl}}/api/staff/status
+
+### 1.2 Register â€” public â€” POST /api/staff/apply â€” multipart profile_pic
+POST {{baseUrl}}/api/staff/apply
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryStaff
+
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="email"
+
+staff.nurse@example.com
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="password"
+
+Staff@123
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="phone_number"
+
+01730000001
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="gender"
+
+Female
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="profile_pic"; filename="staff.jpg"
+Content-Type: image/jpeg
+
+< ./server/uploads/staff/staff.jpg
+------WebKitFormBoundaryStaff--
+
+### 1.3 Login â€” public â€” POST /api/staff/login â€” â­ RETURNS TOKEN
+# @name staffLogin
+POST {{baseUrl}}/api/staff/login
+Content-Type: application/json
+
+{
+  "email": "staff.nurse@example.com",
+  "password": "Staff@123"
+}
+
+# -------------------------------------------------------------------------
+# 2. Staff â€” Profile & Assignment â€” ðŸ”’ staff
+# -------------------------------------------------------------------------
+
+### 2.1 Get own profile â€” ðŸ”’ staff â€” GET /api/staff/profile
+GET {{baseUrl}}/api/staff/profile
+Authorization: Bearer {{staffToken}}
+
+### 2.2 My assignment â€” ðŸ”’ staff â€” GET /api/staff/my-assignment â€” { assignment: null|row }
+GET {{baseUrl}}/api/staff/my-assignment
+Authorization: Bearer {{staffToken}}
+
+### 2.3 Dashboard stats â€” ðŸ”’ staff â€” GET /api/staff/dashboard/stats
+GET {{baseUrl}}/api/staff/dashboard/stats
+Authorization: Bearer {{staffToken}}
+
+# -------------------------------------------------------------------------
+# 3. Staff â€” Appointments â€” ðŸ”’ staff â€” requires ACTIVE assignment to doctor
+# -------------------------------------------------------------------------
+
+### 3.1 List appointments â€” ðŸ”’ staff â€” GET /api/staff/appointments â€” else {appointments:[], assigned:false}
+GET {{baseUrl}}/api/staff/appointments
+Authorization: Bearer {{staffToken}}
+
+### 3.2 Hospitals â€” ðŸ”’ staff â€” GET /api/staff/hospitals
+GET {{baseUrl}}/api/staff/hospitals
+Authorization: Bearer {{staffToken}}
+
+### 3.3 Available schedules for a doctor â€” ðŸ”’ staff â€” GET /api/staff/available-schedules?doctor_id=1
+GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
+Authorization: Bearer {{staffToken}}
+
+### 3.4 Assign hospital + schedule to appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/schedule
+PATCH {{baseUrl}}/api/staff/appointments/1/schedule
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 3.5 Approve appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/approve â€” pendingâ†’scheduled
+PATCH {{baseUrl}}/api/staff/appointments/1/approve
+Authorization: Bearer {{staffToken}}
+
+### 3.6 Reject appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/reject
+PATCH {{baseUrl}}/api/staff/appointments/1/reject
+Authorization: Bearer {{staffToken}}
+
+# -------------------------------------------------------------------------
+# 4. Staff â€” Complaints â€” ðŸ”’ staff â€” fires trg_complaint_admin
+# -------------------------------------------------------------------------
+
+### 4.1 Complaint targets â€” ðŸ”’ staff â€” GET /api/staff/complaint-targets
+GET {{baseUrl}}/api/staff/complaint-targets
+Authorization: Bearer {{staffToken}}
+
+### 4.2 Create complaint â€” ðŸ”’ staff â€” POST /api/staff/complaints
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear for scheduled appointment after confirmation."
+}
+
+### 4.3 Alternative â€” against doctor â€” ðŸ”’ staff
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "against_type": "doctor",
+  "against_id": 1,
+  "complaint_type": "Unprofessional conduct",
+  "description": "Doctor was late for scheduled consultation without notice."
+}
+
+### 4.4 Complaint history â€” ðŸ”’ staff â€” GET /api/staff/complaints
+GET {{baseUrl}}/api/staff/complaints
+Authorization: Bearer {{staffToken}}
+
+### 4.5 Generic complaint via POST /api/complaints â€” public
+POST {{baseUrl}}/api/complaints
+Content-Type: application/json
+
+{
+  "filed_by_type": "staff",
+  "filed_by_id": 1,
+  "against_type": "patient",
+  "against_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear for scheduled appointment."
+}
+
+# -------------------------------------------------------------------------
+# 5. Doctor schedules (read-only for staff) â€” view via staff available-schedules, patient view
+# -------------------------------------------------------------------------
+
+### 5.1 Patient view doctor schedules â€” public â€” GET /api/patients/doctors/1/schedules
+GET {{baseUrl}}/api/patients/doctors/1/schedules
+
+# -------------------------------------------------------------------------
+# 6. Notifications (staff view) â€” public
+# -------------------------------------------------------------------------
+
+### 6.1 Staff notifications â€” GET /api/notifications/staff/:id
+GET {{baseUrl}}/api/notifications/staff/1
+Authorization: Bearer {{staffToken}}
+
+# -------------------------------------------------------------------------
+# 7. Learn â€” public
+# -------------------------------------------------------------------------
+
+### 7.1 Health â€” GET /api/learn/health
+GET {{baseUrl}}/api/learn/health
+
+# =============================================================================
+# 8. Frontend Auth (no API — JWT reuse) — manual verify
+# =============================================================================
+# Auto logout 5m: client/src/hooks/useInactivityLogout.js in StaffDashboard.jsx:51.
+# Already logged in: visit /staff-login while any token ? block.
+# Protected: /staff-dashboard without token ? redirect to /staff-login.
+
+### 8.1 Smoke 401 without token ? 401
+GET {{baseUrl}}/api/staff/profile
+# No Authorization — expect 401
+
+### 8.2 Bad token
+GET {{baseUrl}}/api/staff/profile
+Authorization: Bearer bad.token.here
+

@@ -1,0 +1,45 @@
+/* Home — simple student project */
+.home-navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.home-logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: #075f68; font-weight: 700; font-size: 18px; }
+.home-logo-img { width: 32px; height: 32px; border-radius: 50%; }
+.home-nav { display: flex; gap: 16px; align-items: center; }
+.home-nav a { text-decoration: none; color: #374151; font-size: 14px; }
+.home-account { position: relative; }
+.home-account-btn { background: #075f68; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.home-account-menu { position: absolute; right: 0; top: 32px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; display: flex; flex-direction: column; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.home-account-menu a, .home-logout-btn { padding: 8px 12px; text-decoration: none; color: #374151; font-size: 13px; background: none; border: none; text-align: left; cursor: pointer; }
+.home-account-menu a:hover, .home-logout-btn:hover { background: #f3f4f6; }
+
+.home-page { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+.home-hero { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 24px; margin: 16px 0; text-align: center; }
+.home-hero h1 { color: #065f46; margin-bottom: 6px; }
+.home-hero p { color: #374151; margin: 4px 0; }
+.home-btn { display: inline-block; background: #075f68; color: white; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-top: 10px; }
+
+.home-section { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 16px 0; }
+.home-section h2 { color: #075f68; margin-bottom: 8px; font-size: 18px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-top: 12px; }
+.home-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.home-card img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; }
+.home-card h3 { margin: 8px 0 4px; font-size: 15px; }
+.home-card p { font-size: 13px; color: #6b7280; margin: 2px 0; }
+.home-card button, .home-card a { background: #075f68; color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 8px; font-size: 13px; }
+
+.home-filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.home-filters input, .home-filters select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+.home-dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+.home-dept-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; }
+.home-dept-card:hover { background: #ecfdf5; }
+
+.home-footer { text-align: center; padding: 16px; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+.home-why li { margin: 6px 0; font-size: 14px; }

@@ -1,0 +1,1088 @@
+# =============================================================================
+# Doctoralia — Complete API Test Suite (MASTER — all roles)
+# =============================================================================
+# Base: http://localhost:5000
+# Auth: JWT Bearer (see AUTH-SUMMARY.md + server/apiTester/*)
+# Middleware: server/middleware/authMiddleware.js + roleMiddleware.js
+# Controllers: server/controllers/*.js
+# Routes: server/routes/*.js   Mounted in server/server.js
+#
+# HOW TOKEN FLOW WORKS (VS Code REST Client):
+#  1. Run a login request in Section 1 (e.g. Admin Login).
+#  2. Copy the "token" value from the response body.
+#  3. Paste it into the @adminToken / @doctorToken / @patientToken / @staffToken
+#     variable at the top of this file.
+#  4. Every protected request below already sends:
+#       Authorization: Bearer {{roleToken}}
+#  Alternative (REST Client — request variable):
+#     # @name adminLogin
+#     POST {{baseUrl}}/api/admin/login ...
+#     Then use: Authorization: Bearer {{adminLogin.response.body.token}}
+#
+# SUMMARY TABLE — see AUTH-SUMMARY.md for full matrix
+#  Total endpoints: 103 (Protected 62 / Public 41) — +3 Home: GET /api/patients/doctors/looking-for-staff (public, DEPRECATED) + GET /api/patients/staff-required (public, generic {staff_required}) + GET /api/admin/public-contact (public); POST /appointments now protected (was public)
+#  Department APIs: GET /api/departments (Public, active-only) + POST/PUT/DELETE (🔒 admin)
+#  Doctor Registration: POST /api/doctors/apply (Public, multipart)
+#
+# SEPARATE ROLE FILES (NEW — per your request "all admin/doctor/patient/staff separately"):
+#  server/apiTester/admin.http   — 32 blocks — all admin operations (auth, dashboard, approval, departments, complaints)
+#  server/apiTester/doctor.http  — 37 blocks — all doctor operations (apply/login, profile, appointments, prescriptions, referrals, schedules window 1:30-12:00 today→Dec31, staff assignment)
+#  server/apiTester/patient.http — 30 blocks — all patient operations (register/login, browsing, appointments/payments, complaints, prescriptions/referrals) — +2 staff-required (2.13, 2.14)
+#  server/apiTester/staff.http   — 22 blocks — all staff operations (apply/login, profile/assignment, appointments approve/reject, complaints)
+#  Each file is self-contained with its own @baseUrl + @*Token + login → 121 blocks total across 4 files (master remains 118 blocks, fully compatible)
+#
+# FRONTEND AUTH (no new API route — JWT reuse, 1d expiry unchanged):
+#  - Auto logout 5m: client/src/hooks/useInactivityLogout.js + 4 dashboards; manual verify: login → idle 5m (or set 10s for test) → check localStorage token cleared + redirect + banner "You have been logged out due to inactivity." on login page.
+#  - Already logged in: any login page with token → shows "You are already logged in. Please logout first." + Logout button (clears all roles+token). Manual verify: login → visit same/other login page → expect block.
+#  - Protected routes: client/src/components/ProtectedRoute.jsx + App.jsx wraps dashboards; without token → Navigate to /login|/doctor-login etc.; public pages (/, /login, dept/doctor browsing) stay public. Verify: unauthenticated GET {{baseUrl}}/api/admin/dashboard/stats without Authorization → 401 {No token provided} (see blocks below), and visiting /admin-dashboard without token → redirect to /login.
+# =============================================================================
+
+@baseUrl = http://localhost:5000
+# --- PASTE TOKENS AFTER LOGIN (or use @name capture shown in login blocks) ---
+@adminToken = PASTE_ADMIN_JWT_HERE
+@doctorToken = PASTE_DOCTOR_JWT_HERE
+@patientToken = PASTE_PATIENT_JWT_HERE
+@staffToken = PASTE_STAFF_JWT_HERE
+
+# =============================================================================
+# 0. HEALTH / INFRA  — Public  (server/server.js)
+# =============================================================================
+
+### 0.1 Root — sanity check — Public
+# Expected 200: { "message": "Doctoralia backend is running" }
+GET {{baseUrl}}/
+
+### 0.2 Test DB connection — Public
+# Expected 200: { "message": "Database connection successful", "database": "doctoralia_moriom", "time": "..." }
+GET {{baseUrl}}/api/test-db
+
+# =============================================================================
+# 1. AUTHENTICATION — Token Acquisition (run these FIRST)
+# =============================================================================
+# Each login returns: { "message": "...", "token": "eyJ...", "<role>": { "<id>": 1, ... } }
+# Copy the token into the @*Token variable above, OR rely on @name capture + {{req.response.body.token}}.
+# Token is JWT signed with JWT_SECRET (server/.env: JWT_SECRET), expiresIn "1d", payload { <role>_id, role }.
+# All protected routes require:  Authorization: Bearer {{token}}
+# =============================================================================
+
+# -------------------------------------------------------------------------
+# 1A. ADMIN AUTH — server/routes/adminRoutes.js + server/controllers/adminController.js
+# -------------------------------------------------------------------------
+
+### 1A.1 Admin — Check registration status — Public
+# GET /api/admin/status — always public; tells UI if registration is open (singleton guard).
+# Expected 200: { "closed": true|false, "count": 1, "message": "..." }
+GET {{baseUrl}}/api/admin/status
+
+### 1A.2 Admin — Register — Public (singleton: only 1 admin allowed — "sara")
+# POST /api/admin/register — Public — becomes 403 after first admin exists (adminController.js:14).
+# Expected 201: { "message": "Admin registration successful.", "admin": { "admin_id", "full_name", "email", "phone_number" } }
+# Expected 403: { "message": "Admin registration is disabled..." } if already exists
+# Expected 409: duplicate email
+POST {{baseUrl}}/api/admin/register
+Content-Type: application/json
+
+{
+  "full_name": "Sara Admin",
+  "email": "sara@gmail.com",
+  "password": "sara123",
+  "phone_number": "01700000000"
+}
+
+### 1A.3 Admin — Login — Public — ⭐ RETURNS TOKEN (save as {{adminToken}})
+# POST /api/admin/login — email is lowercased+trimmed; alias "sara" -> "sara@gmail.com" (adminController.js:95).
+# Body: { "email": "sara" | "sara@gmail.com", "password": "sara123" }
+# Expected 200: { "message": "Admin login successful.", "token": "eyJ...", "admin": { "admin_id":1, "full_name":"Sara", ... } }
+# @name adminLogin
+POST {{baseUrl}}/api/admin/login
+Content-Type: application/json
+
+{
+  "email": "sara@gmail.com",
+  "password": "sara123"
+}
+
+# -------------------------------------------------------------------------
+# 1B. DOCTOR AUTH — server/routes/doctorRoutes.js + server/controllers/doctorController.js
+# -------------------------------------------------------------------------
+
+### 1B.1 Doctor — Check Departments (for registration dropdown) — Public
+# GET /api/departments — Public — used to populate department select before applying.
+GET {{baseUrl}}/api/departments
+
+### 1B.2 ⭐ Doctor Registration — POST /api/doctors/apply — Public (NO TOKEN) — multipart/form-data
+# server/routes/doctorRoutes.js:225 + doctorController.js:5
+# Multer: uploads/doctors, field "profile_photo", 5MB, jpeg/jpg/png/webp, stored as /uploads/doctors/<unique>.ext
+# Required: department_id (must exist in department table), full_name, email (unique), password, phone_number,
+#           qualification, specification, medical_registration_no (unique), new_patient_fee, followup_fee, max_patient_num, profile_photo file
+# Expected 201: { "message": "Doctor application successfully submitted. wait for Admin approval.", "doctor": { "doctor_id", ... } }
+# Expected 400: missing/invalid department_id  | 404: department not found | 409: email or medical_registration_no already exists
+# NOTE: Department APIs are fully included — see Section 2.
+POST {{baseUrl}}/api/doctors/apply
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="department_id"
+
+1
+------WebKitFormBoundary
+Content-Disposition: form-data; name="full_name"
+
+Dr. Arif Rahman
+------WebKitFormBoundary
+Content-Disposition: form-data; name="email"
+
+arif.rahman@example.com
+------WebKitFormBoundary
+Content-Disposition: form-data; name="password"
+
+Doctor@123
+------WebKitFormBoundary
+Content-Disposition: form-data; name="phone_number"
+
+01710000001
+------WebKitFormBoundary
+Content-Disposition: form-data; name="qualification"
+
+MBBS, FCPS (Medicine)
+------WebKitFormBoundary
+Content-Disposition: form-data; name="specification"
+
+Cardiology
+------WebKitFormBoundary
+Content-Disposition: form-data; name="medical_registration_no"
+
+BMDC-2026-0001
+------WebKitFormBoundary
+Content-Disposition: form-data; name="new_patient_fee"
+
+800
+------WebKitFormBoundary
+Content-Disposition: form-data; name="followup_fee"
+
+500
+------WebKitFormBoundary
+Content-Disposition: form-data; name="max_patient_num"
+
+20
+------WebKitFormBoundary
+Content-Disposition: form-data; name="profile_photo"; filename="doctor.jpg"
+Content-Type: image/jpeg
+
+< ./server/uploads/doctors/doctor.jpg
+------WebKitFormBoundary--
+
+### 1B.3 Doctor — Login — Public — ⭐ RETURNS TOKEN (save as {{doctorToken}})
+# POST /api/doctors/login — checks approval_status (pending 403, rejected 403) + clears expired suspended_until + active suspension 403.
+# Body: { "email", "password" }  -> jwt { doctor_id, role:"doctor" }
+# Expected 200: { "message": "Doctor login successful.", "token": "eyJ...", "doctor": { "doctor_id", "full_name", ... } }
+# @name doctorLogin
+POST {{baseUrl}}/api/doctors/login
+Content-Type: application/json
+
+{
+  "email": "arif.rahman@example.com",
+  "password": "Doctor@123"
+}
+
+# -------------------------------------------------------------------------
+# 1C. PATIENT AUTH — server/routes/patientRoutes.js + server/controllers/patientController.js
+# -------------------------------------------------------------------------
+
+### 1C.1 Patient — Register — Public
+# POST /api/patients/register — all fields required.
+# Body: { full_name, email (unique), password, phone_number, gender, date_of_birth (YYYY-MM-DD), blood_group, address }
+# Expected 201: { "message": "Patient registration successful.", "patient": { "patient_id", ... } }
+# Expected 409: email already exists — fires DB trigger trg_patient_registration -> Welcome notification
+POST {{baseUrl}}/api/patients/register
+Content-Type: application/json
+
+{
+  "full_name": "Moriom Akter",
+  "email": "moriom.patient@example.com",
+  "password": "Patient@123",
+  "phone_number": "01720000001",
+  "gender": "Female",
+  "date_of_birth": "1998-05-12",
+  "blood_group": "A+",
+  "address": "Dhanmondi, Dhaka"
+}
+
+### 1C.2 Patient — Login — Public — ⭐ RETURNS TOKEN (save as {{patientToken}})
+# POST /api/patients/login — clears expired suspension, blocks active suspension 403.
+# Body: { "email", "password" } -> jwt { patient_id, role:"patient" }
+# Expected 200: { "message": "Login successful.", "token": "eyJ...", "patient": { ... } }
+# @name patientLogin
+POST {{baseUrl}}/api/patients/login
+Content-Type: application/json
+
+{
+  "email": "moriom.patient@example.com",
+  "password": "Patient@123"
+}
+
+# -------------------------------------------------------------------------
+# 1D. STAFF AUTH — server/routes/staffRoutes.js + server/controllers/staffController.js
+# -------------------------------------------------------------------------
+
+### 1D.1 Staff — Check registration status — Public
+# GET /api/staff/status — always open (returns closed:false, count)
+GET {{baseUrl}}/api/staff/status
+
+### 1D.2 Staff — Register — Public — multipart/form-data
+# POST /api/staff/apply — multer uploads/staff, field "profile_pic", 5MB, jpeg/jpg/png/webp
+# Required: email (unique), password, phone_number, gender, profile_pic file — approval_status pending, admin_id NULL
+# Expected 201: { "staff_id", ... }
+POST {{baseUrl}}/api/staff/apply
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryStaff
+
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="email"
+
+staff.nurse@example.com
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="password"
+
+Staff@123
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="phone_number"
+
+01730000001
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="gender"
+
+Female
+------WebKitFormBoundaryStaff
+Content-Disposition: form-data; name="profile_pic"; filename="staff.jpg"
+Content-Type: image/jpeg
+
+< ./server/uploads/staff/staff.jpg
+------WebKitFormBoundaryStaff--
+
+### 1D.3 Staff — Login — Public — ⭐ RETURNS TOKEN (save as {{staffToken}})
+# POST /api/staff/login — pending 403, rejected 403, expired suspension auto-clear, active suspension 403, cleanup ended assignments.
+# Body: { "email", "password" } -> jwt { staff_id, role:"staff" }
+# @name staffLogin
+POST {{baseUrl}}/api/staff/login
+Content-Type: application/json
+
+{
+  "email": "staff.nurse@example.com",
+  "password": "Staff@123"
+}
+
+# =============================================================================
+# 2. DEPARTMENT APIs — server/routes/departmentRoutes.js + server/controllers/departmentController.js
+#    ALSO admin-scoped variant at /api/admin/departments (see Section 5A.9)
+# =============================================================================
+# Public reads: GET / and GET /:id — used by Doctor Registration dropdown & Patient browsing.
+# Protected writes: POST / , PUT /:id , DELETE /:id — 🔒 Requires admin token (roleMiddleware "admin")
+# Headers for protected: Authorization: Bearer {{adminToken}}  Content-Type: application/json
+# =============================================================================
+
+### 2.1 Department — List all — Public (NO TOKEN) ✅ Required for Doctor Registration
+# GET /api/departments?search=Cardio (optional, case-insensitive LIKE)
+# Expected 200: { "message": "Departments fetched successfully.", "departments": [ { "department_id", "department_name", "description", "status" } ] }
+GET {{baseUrl}}/api/departments
+
+### 2.2 Department — Search filter — Public
+GET {{baseUrl}}/api/departments?search=Cardio
+
+### 2.3 Department — Get by ID — Public
+# Expected 200: { "department": { "department_id":1, "department_name":"Cardiology", ... } }  404 if not found
+GET {{baseUrl}}/api/departments/1
+
+### 2.4 Department — Create — 🔒 Requires admin token
+# POST /api/departments — Body: { "department_name" (required), "description" }
+# Expected 201: { "message": "Department created successfully.", "department": { ... } }
+# Expected 400: missing name | 409: duplicate (LOWER check)
+POST {{baseUrl}}/api/departments
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Nephrology",
+  "description": "Kidney and renal system disorders"
+}
+
+### 2.5 Department — Update — 🔒 Requires admin token
+# PUT /api/departments/:id — Body: { "department_name", "description" } — COALESCE semantics (null keeps old value)
+# Expected 200: { "message": "Department updated successfully.", "department": { ... } }  409 duplicate
+PUT {{baseUrl}}/api/departments/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Cardiology Updated",
+  "description": "Heart and cardiovascular system - updated"
+}
+
+### 2.6 Department — Delete — 🔒 Requires admin token — blocked if doctors assigned
+# DELETE /api/departments/:id
+# Expected 200: { "message": "Department deleted successfully." }  409 if doctors exist  404 not found
+DELETE {{baseUrl}}/api/departments/5
+Authorization: Bearer {{adminToken}}
+
+# =============================================================================
+# 3. DOCTOR — PROTECTED ROUTES (server/routes/doctorRoutes.js:244 — router.use(auth+role doctor))
+#    All below require: Authorization: Bearer {{doctorToken}}  role "doctor"
+#    Extra guards: getActiveDoctor() checks approved + suspended_until auto-clear.
+# =============================================================================
+
+### 3.1 Doctor — Get own profile — 🔒 doctor
+# GET /api/doctors/profile — uses req.user.doctor_id, joins department
+# Expected 200: { "doctor": { "doctor_id", "full_name", "email", "department_name", ... } }
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{doctorToken}}
+
+### 3.2 Doctor — Dashboard stats — 🔒 doctor
+# GET /api/doctors/dashboard/stats — counts confirmed/completed appointments, prescriptions, received referrals
+# Expected 200: { "confirmedAppointments": 3, "completedAppointments": 5, "totalPrescriptions": 2, "receivedReferrals": 1 }
+GET {{baseUrl}}/api/doctors/dashboard/stats
+Authorization: Bearer {{doctorToken}}
+
+### 3.3 Doctor — List own appointments (with optional schedule_id filter) — 🔒 doctor
+# GET /api/doctors/appointments?schedule_id=1 (optional — if present verifies doctor owns schedule)
+# Joins patient/hospital/schedule/payment/prescription/referral — ordered confirmed->scheduled->pending->completed
+# Expected 200: { "appointments": [ { "appointment_id", "patient_name", "hospital_name", "available_date", "payment_status", ... } ] }
+GET {{baseUrl}}/api/doctors/appointments
+Authorization: Bearer {{doctorToken}}
+
+### 3.4 Doctor — Appointments filtered by schedule — 🔒 doctor
+GET {{baseUrl}}/api/doctors/appointments?schedule_id=1
+Authorization: Bearer {{doctorToken}}
+
+### 3.5 Doctor — List medicines — 🔒 doctor
+# GET /api/doctors/medicines — SELECT * FROM medicine ORDER BY medicine_name
+# Expected 200: { "medicines": [ { "medicine_id", "medicine_name", "strength", "medicine_type" } ] }
+GET {{baseUrl}}/api/doctors/medicines
+Authorization: Bearer {{doctorToken}}
+
+### 3.6 Doctor — List tests — 🔒 doctor
+# GET /api/doctors/tests — SELECT * FROM test ORDER BY test_name
+# Expected 200: { "tests": [ { "test_id", "test_name", "description", "estimated_cost" } ] }
+GET {{baseUrl}}/api/doctors/tests
+Authorization: Bearer {{doctorToken}}
+
+### 3.7 Doctor — Create prescription — 🔒 doctor — transactional + capacity
+# POST /api/doctors/prescriptions — Appointment must be 'confirmed' and belong to doctor, not already prescribed (409).
+# Body: { "appointment_id" (required), "diagnosis" (required trimmed), "advice" (optional), "medicines": [{ "medicine_id" (required), "dosage", "frequency", "duration", "instruction" }], "tests": [{ "test_id" }] }
+# Inserts prescription + prescription_medicine (dedup Set, verify exists 400) + prescription_test + UPDATE appointment SET completed
+# Fires DB trigger trg_prescription_notification -> patient notification
+# Expected 201: { "message": "Prescription created successfully. Appointment completed.", "prescription": { ... } }
+POST {{baseUrl}}/api/doctors/prescriptions
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "appointment_id": 1,
+  "diagnosis": "Acute viral fever with mild dehydration",
+  "advice": "Take rest for 3 days, drink plenty of fluids, follow up if fever persists.",
+  "medicines": [
+    {
+      "medicine_id": 1,
+      "dosage": "500mg",
+      "frequency": "3 times daily",
+      "duration": "5 days",
+      "instruction": "After meal"
+    },
+    {
+      "medicine_id": 2,
+      "dosage": "20mg",
+      "frequency": "Once daily",
+      "duration": "7 days",
+      "instruction": "Before breakfast"
+    }
+  ],
+  "tests": [
+    { "test_id": 1 },
+    { "test_id": 2 }
+  ]
+}
+
+### 3.8 Doctor — List referral targets (approved doctors except self) — 🔒 doctor
+# GET /api/doctors/referral-doctors — only approved + not suspended, excludes self
+GET {{baseUrl}}/api/doctors/referral-doctors
+Authorization: Bearer {{doctorToken}}
+
+### 3.9 Doctor — Create referral — 🔒 doctor
+# POST /api/doctors/referrals — cannot self-refer, appointment must be confirmed/completed and belong to doctor, not already referred (409), target must be approved not suspended.
+# Body: { "appointment_id" (required), "referred_to" (doctor_id required), "reason" (required trimmed) }
+# Fires DB trigger trg_referral_notification -> patient notification
+# Expected 201: { "message": "Patient referred successfully.", "referral": { ... } }
+POST {{baseUrl}}/api/doctors/referrals
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "appointment_id": 1,
+  "referred_to": 2,
+  "reason": "Patient requires specialized neurological evaluation — please review ECG and prescribe further care."
+}
+
+### 3.10 Doctor — Sent referrals — 🔒 doctor
+# GET /api/doctors/referrals/sent — WHERE referred_by = self, joins patient + target doctor/department
+GET {{baseUrl}}/api/doctors/referrals/sent
+Authorization: Bearer {{doctorToken}}
+
+### 3.11 Doctor — Received referrals — 🔒 doctor
+# GET /api/doctors/referrals/received — WHERE referred_to = self, joins patient + source doctor/department
+GET {{baseUrl}}/api/doctors/referrals/received
+Authorization: Bearer {{doctorToken}}
+
+### 3.12 Doctor — Complaint targets (patients of doctor + approved staff) — 🔒 doctor
+# GET /api/doctors/complaint-targets — patients = DISTINCT from appointment where doctor_id = self; staff = approved not suspended
+GET {{baseUrl}}/api/doctors/complaint-targets
+Authorization: Bearer {{doctorToken}}
+
+### 3.13 Doctor — Create complaint — 🔒 doctor
+# POST /api/doctors/complaints — Body: { "against_type": "patient"|"staff" (required), "against_id" (required), "appointment_id" (optional, must belong to doctor + patient match), "complaint_type" (required), "description" (required) }
+# Inserts filed_by_doctor_id, status pending — fires trg_complaint_admin -> admin 1 notification
+# Expected 201: { "complaint": { ... } }
+POST {{baseUrl}}/api/doctors/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "Misbehavior",
+  "description": "Patient repeatedly missed scheduled follow-up without notice, affecting clinic schedule."
+}
+
+### 3.14 Doctor — Create complaint against staff — 🔒 doctor (variant)
+POST {{baseUrl}}/api/doctors/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "staff",
+  "against_id": 1,
+  "complaint_type": "Unprofessional conduct",
+  "description": "Staff member was unavailable during assigned duty hours."
+}
+
+### 3.15 Doctor — My complaint history — 🔒 doctor
+# GET /api/doctors/complaints — WHERE filed_by_doctor_id = self, joins patient/staff + admin reviewed_by
+GET {{baseUrl}}/api/doctors/complaints
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 3D. DOCTOR — SCHEDULE MANAGEMENT — 🔒 doctor — Window 12:55-18:00 Asia/Dhaka (server/utils/scheduleWindow.js:6)
+#     Dates: tomorrow .. Dec 31 of same year (assertTargetDateInSameYear) — time HH:MM 24h regex ^([01]\d|2[0-3]):([0-5]\d)$
+# -------------------------------------------------------------------------
+
+### 3D.1 Doctor — Hospitals (for schedule create) — 🔒 doctor
+# GET /api/doctors/hospitals — SELECT hospital_id, hospital_name, city, address
+GET {{baseUrl}}/api/doctors/hospitals
+Authorization: Bearer {{doctorToken}}
+
+### 3D.2 Doctor — Schedule window info — 🔒 doctor
+# GET /api/doctors/schedules/window — returns { timezone:"Asia/Dhaka", targetDate, currentDate, isOpen, currentTime, window:"12:55-18:00" }
+GET {{baseUrl}}/api/doctors/schedules/window
+Authorization: Bearer {{doctorToken}}
+
+### 3D.3 Doctor — List my schedules (own only) — 🔒 doctor
+# GET /api/doctors/schedules — WHERE ds.doctor_id = self AND s.available_date BETWEEN targetDate AND Dec31, enriched is_expired/computed_status/is_tomorrow/is_editable
+GET {{baseUrl}}/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+
+### 3D.4 Doctor — Create schedule — 🔒 doctor — ONLY when window open (12:55-18:00) else 403 WINDOW_CLOSED
+# POST /api/doctors/schedules — Body: { "available_date" (YYYY-MM-DD, default targetDate, must be tomorrow..Dec31 same year), "start_time" HH:MM (required), "end_time" HH:MM (required, > start), "hospital_id" (required, must exist), "status"/"slot_status" "AVAILABLE"|"WORKING"|"UNAVAILABLE" default AVAILABLE }
+# Checks overlap, duplicate doctor+date+time+hospital, shared global schedule row reuse, doctor_schedule insert.
+# Expected 201: { schedule }  400 invalid time/date  403 window closed  409 overlap/duplicate
+POST {{baseUrl}}/api/doctors/schedules
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "available_date": "2026-09-24",
+  "start_time": "10:00",
+  "end_time": "11:00",
+  "hospital_id": 1,
+  "status": "AVAILABLE"
+}
+
+### 3D.5 Doctor — Create schedule (minimal — defaults to tomorrow) — 🔒 doctor
+POST {{baseUrl}}/api/doctors/schedules
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "start_time": "14:00",
+  "end_time": "15:00",
+  "hospital_id": 1
+}
+
+### 3D.6 Doctor — Update own schedule — 🔒 doctor — window + tomorrow + not expired + not WORKING
+# PUT /api/doctors/schedules/:id — Params :id schedule_id — Body same as create (available_date, start_time, end_time, hospital_id, status)
+# Verified owned via JOIN doctor_schedule, assertTargetDateInSameYear, !isSlotExpired, slot_status != WORKING, overlap excludeScheduleId, shared-slot detach creates new schedule row
+PUT {{baseUrl}}/api/doctors/schedules/1
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "available_date": "2026-09-24",
+  "start_time": "09:00",
+  "end_time": "10:00",
+  "hospital_id": 1,
+  "status": "AVAILABLE"
+}
+
+### 3D.7 Doctor — Toggle availability — 🔒 doctor
+# PATCH /api/doctors/schedules/:id/availability — Body: { "status" or "slot_status": "AVAILABLE"|"WORKING"|"UNAVAILABLE" (required) }
+# Same guards as update; blocks UNAVAILABLE if WORKING with appointments.
+PATCH {{baseUrl}}/api/doctors/schedules/1/availability
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "status": "UNAVAILABLE"
+}
+
+### 3D.8 Doctor — Toggle back to available — 🔒 doctor
+PATCH {{baseUrl}}/api/doctors/schedules/1/availability
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "slot_status": "AVAILABLE"
+}
+
+### 3D.9 Doctor — Delete own slot — 🔒 doctor — not expired, not WORKING, no scheduled/confirmed appointments (409 if exists)
+# DELETE /api/doctors/schedules/:id — deletes doctor_schedule, if no remaining links deletes schedule row.
+DELETE {{baseUrl}}/api/doctors/schedules/1
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 3E. DOCTOR — STAFF ASSIGNMENT — 🔒 doctor  (Primary + Temporary) — server/utils/staffAssignmentHelper.js
+# -------------------------------------------------------------------------
+
+### 3E.1 Doctor — My staff (primary + temporary) — 🔒 doctor
+# GET /api/doctors/my-staff — returns { primary: assignment|null, temporary: ..., hasPrimary, hasTemporary, is_suspended } — cleanup expired assigns/suspensions
+GET {{baseUrl}}/api/doctors/my-staff
+Authorization: Bearer {{doctorToken}}
+
+### 3E.2 Doctor — Available staff (approved, not suspended, not assigned) — 🔒 doctor
+GET {{baseUrl}}/api/doctors/available-staff
+Authorization: Bearer {{doctorToken}}
+
+### 3E.3 Doctor — Assign staff — 🔒 doctor
+# POST /api/doctors/assign-staff — Body: { "staff_id" (required) } — Transaction FOR UPDATE staff, checks approved not suspended, no active assignment for staff, primary/temporary logic: if no primary -> PRIMARY end_date NULL, if primary suspended + no temp -> TEMPORARY end_date = primary.suspended_until, else 409. Unique 23505 caught.
+# Expected 201: assignment  409 already assigned / has staff
+POST {{baseUrl}}/api/doctors/assign-staff
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "staff_id": 1
+}
+
+### 3E.4 Doctor — Add medicine (catalog) — 🔒 doctor — note double authMiddleware in route (redundant)
+# POST /api/doctors/add-medicine — Body: { "medicine_name" (required), "strength", "medicine_type" } — INSERT INTO medicine
+POST {{baseUrl}}/api/doctors/add-medicine
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "medicine_name": "Napa Extra",
+  "strength": "500mg",
+  "medicine_type": "Tablet"
+}
+
+### 3E.5 Doctor — Add test (catalog) — 🔒 doctor
+# POST /api/doctors/add-test — Body: { "test_name" (required), "description", "estimated_cost" } — INSERT INTO test
+POST {{baseUrl}}/api/doctors/add-test
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "test_name": "Blood Sugar Fasting",
+  "description": "Fasting blood glucose level",
+  "estimated_cost": 350.00
+}
+
+# =============================================================================
+# 4. STAFF — server/routes/staffRoutes.js + server/controllers/staffController.js
+#    Public: GET /status, POST /apply, POST /login  |  Protected 🔒 staff: everything after router.use(auth, role staff)
+# =============================================================================
+
+### 4.1 Staff — Get own profile — 🔒 staff
+# GET /api/staff/profile — req.user.staff_id -> getActiveStaff (approved + not suspended)
+GET {{baseUrl}}/api/staff/profile
+Authorization: Bearer {{staffToken}}
+
+### 4.2 Staff — My assignment — 🔒 staff
+# GET /api/staff/my-assignment — cleanup assignments, join doctor — returns { assignment: null|row }
+GET {{baseUrl}}/api/staff/my-assignment
+Authorization: Bearer {{staffToken}}
+
+### 4.3 Staff — Dashboard stats — 🔒 staff
+# GET /api/staff/dashboard/stats — finds doctorId from ACTIVE staff_assignment, counts pending/scheduled/confirmed appointments + filed complaints
+GET {{baseUrl}}/api/staff/dashboard/stats
+Authorization: Bearer {{staffToken}}
+
+### 4.4 Staff — List appointments (assigned doctor) — 🔒 staff
+# GET /api/staff/appointments — requires active assignment else { appointments:[], assigned:false }; joins patient/doctor/department/hospital/schedule/payment + remaining_slots = max_patient_num - booked
+GET {{baseUrl}}/api/staff/appointments
+Authorization: Bearer {{staffToken}}
+
+### 4.5 Staff — Hospitals — 🔒 staff
+GET {{baseUrl}}/api/staff/hospitals
+Authorization: Bearer {{staffToken}}
+
+### 4.6 Staff — Available schedules for a doctor (read-only) — 🔒 staff
+# GET /api/staff/available-schedules?doctor_id=1 — query doctor_id required, verifies staff assignment to that doctor, returns ds.status AVAILABLE filtered !isSlotExpired
+GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
+Authorization: Bearer {{staffToken}}
+
+### 4.7 Staff — Assign hospital + schedule to appointment — 🔒 staff — staff cannot create doctor slots, only pick existing
+# PATCH /api/staff/appointments/:id/schedule — Body: { "hospital_id" (required), "schedule_id" (required) }
+# Verifies ACTIVE assignment to appointment's doctor, pending/scheduled status, doctor not suspended, hospital exists, slot FOR UPDATE, slot_status != UNAVAILABLE, not expired, capacity max_patient_num
+# Expected 200: updated appointment  403 not assigned  400 unavailable/expired  409 capacity full
+PATCH {{baseUrl}}/api/staff/appointments/1/schedule
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 4.8 Staff — Approve appointment (pending -> scheduled) — 🔒 staff
+# PATCH /api/staff/appointments/:id/approve — lock appointment JOIN doctor, status pending, schedule_id not null, lock schedule FOR UPDATE, check UNAVAILABLE/expired, capacity < max_patient_num, UPDATE status scheduled — returns capacity { max, booked+1, remaining }
+PATCH {{baseUrl}}/api/staff/appointments/1/approve
+Authorization: Bearer {{staffToken}}
+
+### 4.9 Staff — Reject appointment — 🔒 staff
+# PATCH /api/staff/appointments/:id/reject — similar guards -> UPDATE status rejected, cancelled_by_staff_id
+PATCH {{baseUrl}}/api/staff/appointments/1/reject
+Authorization: Bearer {{staffToken}}
+
+### 4.10 Staff — Complaint targets (patients + doctors) — 🔒 staff
+# GET /api/staff/complaint-targets — { patients: all patient_id/full_name/email/phone, doctors: approved not suspended with department }
+GET {{baseUrl}}/api/staff/complaint-targets
+Authorization: Bearer {{staffToken}}
+
+### 4.11 Staff — Create complaint — 🔒 staff
+# POST /api/staff/complaints — Body: { "against_type":"patient"|"doctor" (required), "against_id" (required), "appointment_id" (optional, must exist), "complaint_type" (required), "description" (required) } — verified existence, pending
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear for scheduled appointment after confirmation."
+}
+
+### 4.12 Staff — Complaint history — 🔒 staff
+# GET /api/staff/complaints — WHERE filed_by_staff_id = self, joins patient/doctor/admin
+GET {{baseUrl}}/api/staff/complaints
+Authorization: Bearer {{staffToken}}
+
+# =============================================================================
+# 5. PATIENT — server/routes/patientRoutes.js + server/controllers/patientController.js
+#    ⚠️ Note: Most patient routes are currently PUBLIC (no authMiddleware) — see AUTH-SUMMARY.md security notes.
+#    Only GET /prescriptions and GET /referrals are 🔒 patient-protected.
+# =============================================================================
+
+# --- Public browsing ---
+
+### 5.1 Patient — List approved doctors — Public
+# GET /api/patients/doctors?department_id=1&search=Arif — WHERE approved + not suspended, LOWER(full_name) LIKE
+GET {{baseUrl}}/api/patients/doctors
+
+### 5.2 Patient — Filter by department — Public
+GET {{baseUrl}}/api/patients/doctors?department_id=1
+
+### 5.3 Patient — Search doctors — Public
+GET {{baseUrl}}/api/patients/doctors?search=Arif
+
+### 5.4 Patient — Available doctors by date — Public
+# GET /api/patients/doctors/available-by-date?date=YYYY-MM-DD&department_id= (optional) — date required regex YYYY-MM-DD, JOIN doctor_schedule AVAILABLE + not suspended, filtered hasAvailable
+GET {{baseUrl}}/api/patients/doctors/available-by-date?date=2026-09-24
+
+### 5.5 Patient — Available doctors by date + department — Public
+GET {{baseUrl}}/api/patients/doctors/available-by-date?date=2026-09-24&department_id=1
+
+### 5.6 Patient — Schedules for a doctor on a date — Public
+# GET /api/patients/doctors/:id/schedules/by-date?date=YYYY-MM-DD — date required, returns AVAILABLE slots order start_time
+GET {{baseUrl}}/api/patients/doctors/1/schedules/by-date?date=2026-09-24
+
+### 5.7 Patient — Departments — Public
+# GET /api/patients/departments — SELECT department_id, department_name, description ORDER BY name
+GET {{baseUrl}}/api/patients/departments
+
+### 5.8 Patient — Doctor details — Public
+# GET /api/patients/doctors/:id — single approved not suspended + department_name, 404 if not approved
+GET {{baseUrl}}/api/patients/doctors/1
+
+### 5.9 Patient — Doctor available schedules (all AVAILABLE, filtered !isSlotExpired) — Public
+GET {{baseUrl}}/api/patients/doctors/1/schedules
+
+### 5.10 Patient — Staff list (for complaint) — Public
+# GET /api/patients/staff — approved not suspended
+GET {{baseUrl}}/api/patients/staff
+
+### 5.10b Patient — Staff Required (generic) — Public — NEW — Home banner, no doctor details — global check
+# GET /api/patients/staff-required — public, no token — Expected 200: { staff_required: true } or { staff_required: false }
+# Logic: NOT EXISTS global available staff (shobi unavailable) AND EXISTS approved+active doctor with NO ACTIVE assignment
+# Global e 1 jon o available thakle → false → banner hidden (assign korar moto staff ase, ad na)
+# Cases: A global 1 available → false (hidden), B global 0 + doctor without staff → true (visible), C later staff approved → false, D multi + global 0 → true, E all have staff OR global 1 → false
+GET {{baseUrl}}/api/patients/staff-required
+
+### 5.10c Patient — Staff Required toggle verify (DEPRECATED looking-for-staff kept below)
+# DEPRECATED: GET /api/patients/doctors/looking-for-staff returns { doctors: [...] } leaks doctor cards — Home no longer uses
+GET {{baseUrl}}/api/patients/doctors/looking-for-staff
+
+### 5.11 Patient — Get profile by ID — Public (⚠️ should be protected — anyone can fetch any patient by ID)
+# GET /api/patients/profile/:id — SELECT patient_id/full_name/email/phone/gender/dob/blood_group/address/suspended_until
+GET {{baseUrl}}/api/patients/profile/1
+
+### 5.12 Patient — Update profile by ID — Public (⚠️ should be protected)
+# PUT /api/patients/profile/:id — Body: { "full_name", "phone_number", "gender", "date_of_birth", "blood_group", "address" } — UPDATE RETURNING
+PUT {{baseUrl}}/api/patients/profile/1
+Content-Type: application/json
+
+{
+  "full_name": "Moriom Akter Updated",
+  "phone_number": "01720000099",
+  "gender": "Female",
+  "date_of_birth": "1998-05-12",
+  "blood_group": "A+",
+  "address": "Gulshan-1, Dhaka — updated"
+}
+
+# --- Appointment & Payment — Public but with ownership checks inside controller ---
+
+### 5.13 Patient — Create appointment — Public (⚠️ no auth, but validates patient/doctor/schedule + capacity + duplicate 409 + expired slot)
+# POST /api/patients/appointments — Body: { "patient_id" (required), "doctor_id" (required), "schedule_id" (required), "hospital_id" (optional fallback slot.hospital_id) }
+# Locks patient FOR UPDATE (suspended check), doctor FOR UPDATE (approved+not suspended), schedule JOIN doctor_schedule FOR UPDATE (AVAILABLE+not expired), duplicate pending/scheduled/confirmed 409, capacity max_patient_num 409, INSERT pending
+# Expected 201: { "message": "Appointment request submitted successfully.", "appointment": { "appointment_id", "appointment_status":"pending", ... } }
+POST {{baseUrl}}/api/patients/appointments
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "doctor_id": 1,
+  "schedule_id": 1,
+  "hospital_id": 1
+}
+
+### 5.14 Patient — List own appointments — Public (⚠️ :patientId in path, no ownership token check)
+# GET /api/patients/:patientId/appointments — JOIN doctor/department/hospital/schedule/payment ORDER appointment_id DESC
+GET {{baseUrl}}/api/patients/1/appointments
+
+### 5.15 Patient — Cancel pending appointment — Public (⚠️ no ownership check, just status pending)
+# DELETE /api/patients/appointments/:id — DELETE WHERE status pending RETURNING 404 if not pending
+DELETE {{baseUrl}}/api/patients/appointments/1
+
+### 5.16 Patient — Make payment — Public (⚠️ should require patient token; controller does patient_id == appointment.patient_id check)
+# POST /api/patients/payments — Body: { "patient_id" (required), "appointment_id" (required), "payment_method" (required e.g. "bkash","cash","card") }
+# Validates not suspended, locks appointment FOR UPDATE OF a, checks belongs to patient 403, status scheduled else 400, unavailable/expired 400, already paid 409, picks new_patient_fee vs followup_fee via EXISTS completed, INSERT payment paid + UPDATE appointment confirmed
+# Fires DB trigger trg_payment_success -> patient notification; trg_appointment_status_notification -> 'confirmed'
+# Expected 201: { "message": "Payment successful. Appointment confirmed.", "fee_type": "new_patient"|"followup", "amount": 800, "payment": { ... } }
+POST {{baseUrl}}/api/patients/payments
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "appointment_id": 1,
+  "payment_method": "bkash"
+}
+
+### 5.17 Patient — Create complaint — Public
+# POST /api/patients/complaints — Body: { "patient_id" (required), "against_type":"doctor"|"staff" (required), "against_id" (required), "appointment_id" (optional), "complaint_type" (required), "description" (required) } — checks patient not suspended, maps against_doctor/staff, filed_by_patient_id, pending — fires trg_complaint_admin
+POST {{baseUrl}}/api/patients/complaints
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "against_type": "doctor",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "Rude behavior",
+  "description": "Doctor was dismissive during consultation and did not explain diagnosis properly."
+}
+
+### 5.18 Patient — Complaint history — Public
+# GET /api/patients/:patientId/complaints — WHERE filed_by_patient_id = :patientId, joins doctor/staff/admin
+GET {{baseUrl}}/api/patients/1/complaints
+
+# --- Protected patient routes (🔒) ---
+
+### 5.19 Patient — Prescriptions (OWN) — 🔒 Requires patient token — uses req.user.patient_id
+# GET /api/patients/prescriptions — joins prescription→appointment→doctor→department/hospital/schedule + json_agg medicines + tests WHERE patient_id = self ORDER created_at DESC
+# Expected 200: { "prescriptions": [ { "prescription_id", "diagnosis", "advice", "doctor_name", "medicines":[...], "tests":[...] } ] }
+GET {{baseUrl}}/api/patients/prescriptions
+Authorization: Bearer {{patientToken}}
+
+### 5.20 Patient — Referrals (OWN) — 🔒 Requires patient token
+# GET /api/patients/referrals — joins referral→appointment→source/target doctor + department WHERE patient_id = self
+GET {{baseUrl}}/api/patients/referrals
+Authorization: Bearer {{patientToken}}
+
+# =============================================================================
+# 6. ADMIN — PROTECTED ROUTES — server/routes/adminRoutes.js + server/controllers/adminController.js
+#    Public: POST /register, POST /login, GET /status | Protected 🔒 admin: all others via auth+role "admin"
+#    Token payload: { admin_id, role:"admin" }
+# =============================================================================
+
+### 6.1 Admin — Get profile — 🔒 admin
+# GET /api/admin/profile/:id — Params :id admin_id — SELECT admin_id/full_name/email/phone 404 if not found
+GET {{baseUrl}}/api/admin/profile/1
+Authorization: Bearer {{adminToken}}
+
+### 6.2 Admin — Dashboard stats — 🔒 admin
+# GET /api/admin/dashboard/stats — counts doctor pending, staff pending, approved doctors, departments
+# Expected 200: { "pendingDoctors": 2, "pendingStaff": 1, "approvedDoctors": 5, "departments": 5 }
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+### 6.3 Admin — Pending doctors — 🔒 admin
+# GET /api/admin/doctors/pending — WHERE approval pending ORDER DESC, joins department
+GET {{baseUrl}}/api/admin/doctors/pending
+Authorization: Bearer {{adminToken}}
+
+### 6.4 Admin — Approve doctor — 🔒 admin
+# PATCH /api/admin/doctors/:id/approve — uses req.user.admin_id -> UPDATE SET approved, approved_by WHERE pending RETURNING
+# Params :id doctor_id — no body required
+PATCH {{baseUrl}}/api/admin/doctors/1/approve
+Authorization: Bearer {{adminToken}}
+
+### 6.5 Admin — Reject doctor — 🔒 admin
+PATCH {{baseUrl}}/api/admin/doctors/2/reject
+Authorization: Bearer {{adminToken}}
+
+### 6.6 Admin — Pending staff — 🔒 admin
+GET {{baseUrl}}/api/admin/staff/pending
+Authorization: Bearer {{adminToken}}
+
+### 6.7 Admin — Approve staff — 🔒 admin
+# PATCH /api/admin/staff/:id/approve — UPDATE SET approved, admin_id WHERE pending
+PATCH {{baseUrl}}/api/admin/staff/1/approve
+Authorization: Bearer {{adminToken}}
+
+### 6.8 Admin — Reject staff — 🔒 admin
+PATCH {{baseUrl}}/api/admin/staff/2/reject
+Authorization: Bearer {{adminToken}}
+
+### 6.9 Admin — Approved staff (with assignment info) — 🔒 admin
+# GET /api/admin/staff/approved — clears suspended/assignments, LEFT JOIN staff_assignment ACTIVE + doctor, enriched is_assigned/is_suspended/is_available
+GET {{baseUrl}}/api/admin/staff/approved
+Authorization: Bearer {{adminToken}}
+
+### 6.10 Admin — Suspended staff — 🔒 admin
+# GET /api/admin/staff/suspended — cleanup, WHERE suspended_until > NOW ORDER DESC
+GET {{baseUrl}}/api/admin/staff/suspended
+Authorization: Bearer {{adminToken}}
+
+### 6.11 Admin — Available staff — 🔒 admin
+# GET /api/admin/staff/available — approved + not suspended + NOT EXISTS ACTIVE assignment
+GET {{baseUrl}}/api/admin/staff/available
+Authorization: Bearer {{adminToken}}
+
+### 6.12 Admin — Doctor decision history — 🔒 admin
+# GET /api/admin/history/doctors/:adminId — WHERE approved_by = :adminId AND approval IN (approved,rejected)
+GET {{baseUrl}}/api/admin/history/doctors/1
+Authorization: Bearer {{adminToken}}
+
+### 6.13 Admin — Staff decision history — 🔒 admin
+# GET /api/admin/history/staff/:adminId — WHERE admin_id = :adminId AND approval IN
+GET {{baseUrl}}/api/admin/history/staff/1
+Authorization: Bearer {{adminToken}}
+
+### 6.14 Admin — All complaints — 🔒 admin
+# GET /api/admin/complaints — joins filed/against patient/doctor/staff + admin_user, pending first ORDER complaint_id DESC
+GET {{baseUrl}}/api/admin/complaints
+Authorization: Bearer {{adminToken}}
+
+### 6.15 Admin — Suspend user from complaint (5 days) — 🔒 admin — transactional
+# PATCH /api/admin/complaints/:id/suspend — uses req.user.admin_id, SELECT FOR UPDATE, must be pending else 400, updates doctor|staff|patient suspended_until = NOW+5 days, UPDATE complaint reviewed_by, status resolved, admin_action suspended_5_days
+# Expected 200: { "message": "Complaint reviewed. User suspended for 5 days.", "complaint": { ... } }
+PATCH {{baseUrl}}/api/admin/complaints/1/suspend
+Authorization: Bearer {{adminToken}}
+
+### 6.16 Admin — Dismiss complaint — 🔒 admin
+# PATCH /api/admin/complaints/:id/dismiss — UPDATE reviewed_by, status resolved, admin_action dismissed WHERE pending
+PATCH {{baseUrl}}/api/admin/complaints/1/dismiss
+Authorization: Bearer {{adminToken}}
+
+### 6.17 Admin — Departments (scoped to admin) — 🔒 admin
+# GET /api/admin/departments?search=Cardio — duplicate of /api/departments but admin-scoped, auth+admin required
+GET {{baseUrl}}/api/admin/departments
+Authorization: Bearer {{adminToken}}
+
+### 6.18 Admin — Departments search — 🔒 admin
+GET {{baseUrl}}/api/admin/departments?search=Neuro
+Authorization: Bearer {{adminToken}}
+
+### 6.19 Admin — Add department (admin-scoped) — 🔒 admin
+# POST /api/admin/departments — Body: { "department_name" (required trim), "description" } — duplicate 409 -> INSERT
+POST {{baseUrl}}/api/admin/departments
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Oncology",
+  "description": "Cancer diagnosis and treatment"
+}
+
+### 6.20 Admin — Update department (admin-scoped) — 🔒 admin
+# PUT /api/admin/departments/:id — Body: { "department_name" (required), "description" } — duplicate check, SET name/description
+PUT {{baseUrl}}/api/admin/departments/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Cardiology - Admin Update",
+  "description": "Heart care — updated via admin route"
+}
+
+### 6.21 Admin — Disable department — ⚠️ PUBLIC (SECURITY ANOMALY — no authMiddleware!) — server/routes/adminRoutes.js:103
+# PUT /api/admin/departments/:id/disable — UPDATE status='inactive' RETURNING — SHOULD be 🔒 admin but currently public!
+# Expected 200: { "message": "Department disabled successfully." }
+PUT {{baseUrl}}/api/admin/departments/1/disable
+Content-Type: application/json
+
+{
+}
+
+### 6.22 Admin — Enable department — ⚠️ PUBLIC (SECURITY ANOMALY — no authMiddleware!) — server/routes/adminRoutes.js:108
+# PUT /api/admin/departments/:id/enable — UPDATE status='active' RETURNING — SHOULD be 🔒 admin but currently public!
+PUT {{baseUrl}}/api/admin/departments/1/enable
+Content-Type: application/json
+
+{
+}
+
+# =============================================================================
+# 7. COMPLAINT — GENERIC — server/routes/complaintRoutes.js + server/controllers/complaintController.js
+# =============================================================================
+
+### 7.1 Complaint — Generic create — Public (no auth) — legacy generic endpoint
+# POST /api/complaints — Body: { "filed_by_type":"patient"|"doctor"|"staff" (required), "filed_by_id" (required), "against_type":"patient"|"doctor"|"staff" (required), "against_id" (required), "appointment_id" (optional), "complaint_type" (required), "description" (required) }
+# Maps to filed_by_patient/doctor/staff + against_*, INSERT pending — fires trg_complaint_admin -> admin 1 notification
+# Expected 201: complaint
+POST {{baseUrl}}/api/complaints
+Content-Type: application/json
+
+{
+  "filed_by_type": "patient",
+  "filed_by_id": 1,
+  "against_type": "doctor",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "Service delay",
+  "description": "Long waiting time beyond appointment slot, no prior notice."
+}
+
+### 7.2 Complaint — Generic create by doctor — Public
+POST {{baseUrl}}/api/complaints
+Content-Type: application/json
+
+{
+  "filed_by_type": "doctor",
+  "filed_by_id": 1,
+  "against_type": "patient",
+  "against_id": 1,
+  "complaint_type": "Non-compliance",
+  "description": "Patient refused to follow prescribed medication regimen."
+}
+
+# =============================================================================
+# 8. NOTIFICATIONS — server/routes/notificationRoutes.js + server/controllers/notificationController.js
+# =============================================================================
+
+### 8.1 Notifications — Get by role + id — Public (⚠️ should be protected — exposes all notifications for any id)
+# GET /api/notifications/:role/:id — Params :role e.g. patient|doctor|staff|admin, :id receiver_id — SELECT * FROM notification WHERE receiver_role=$1 AND receiver_id=$2 ORDER created_at DESC
+# Populated by 6 DB triggers in database/schema.sql: appointment_status, patient_registration, payment_success, prescription, referral, complaint_admin
+# Expected 200: { "notifications": [ { "notification_id", "receiver_role", "receiver_id", "title", "message", "related_type", "related_id", "is_read", "created_at" } ] }
+GET {{baseUrl}}/api/notifications/patient/1
+
+### 8.2 Notifications — Admin — Public
+GET {{baseUrl}}/api/notifications/admin/1
+
+### 8.3 Notifications — Doctor — Public
+GET {{baseUrl}}/api/notifications/doctor/1
+
+### 8.4 Notifications — Staff — Public
+GET {{baseUrl}}/api/notifications/staff/1
+
+# =============================================================================
+# 9. LEARN — PRACTICE ENDPOINTS — server/routes/learnRoutes.js + server/controllers/learnController.js
+#    All Public — no auth — for learning FROM/WHERE/INSERT/UPDATE/DELETE/TRANSACTION
+# =============================================================================
+
+### 9.1 Learn — Health — Public
+# GET /api/learn/health — returns { "message", "time": ISO, "env": DB_NAME }
+GET {{baseUrl}}/api/learn/health
+
+### 9.2 Learn — SELECT departments — Public
+# GET /api/learn/select?search=Cardio — SELECT department_id,name,description WHERE LOWER(name) LIKE %search% LIMIT 5
+GET {{baseUrl}}/api/learn/select
+
+### 9.3 Learn — SELECT with search — Public
+GET {{baseUrl}}/api/learn/select?search=Cardio
+
+### 9.4 Learn — INSERT department — Public
+# POST /api/learn/insert — Body: { "department_name" (required), "description" } — dup 409 -> INSERT RETURNING
+POST {{baseUrl}}/api/learn/insert
+Content-Type: application/json
+
+{
+  "department_name": "LearnTestDept",
+  "description": "from learn API"
+}
+
+### 9.5 Learn — INSERT duplicate (should 409) — Public
+POST {{baseUrl}}/api/learn/insert
+Content-Type: application/json
+
+{
+  "department_name": "LearnTestDept",
+  "description": "duplicate"
+}
+
+### 9.6 Learn — UPDATE department — Public
+# PUT /api/learn/update/:id — Body: { "department_name", "description" } — COALESCE 404 if not found
+PUT {{baseUrl}}/api/learn/update/1
+Content-Type: application/json
+
+{
+  "department_name": "LearnUpdatedDept",
+  "description": "updated via learn API"
+}
+
+### 9.7 Learn — DELETE department — Public
+# DELETE /api/learn/delete/:id — blocked if doctors assigned 409 else DELETE
+DELETE {{baseUrl}}/api/learn/delete/999
+
+### 9.8 Learn — TRANSACTION demo — Public
+# POST /api/learn/transaction — Body: { "patient_id" (required), "doctor_id" (required) } — BEGIN INSERT appointment pending COMMIT or ROLLBACK
+POST {{baseUrl}}/api/learn/transaction
+Content-Type: application/json
+
+{
+  "patient_id": 1,
+  "doctor_id": 2
+}
+
+# =============================================================================
+# END OF FILE
+# =============================================================================
+# Quick smoke order:
+#  1) 1A.3 admin login -> set @adminToken
+#  2) 2.4 create Nephrology (admin)
+#  3) 1B.2 doctor apply (public, needs valid department_id from 2.1)
+#  4) 6.3 pending doctors -> 6.4 approve (admin)
+#  5) 1B.3 doctor login -> set @doctorToken
+#  6) 3D.2 window -> 3D.4 create schedule (only 12:55-18:00 Asia/Dhaka, tomorrow..Dec31) -> 3D.3 list
+#  7) 1C.1 patient register -> 1C.2 login -> set @patientToken
+#  8) 5.13 create appointment (needs schedule_id from doctor) -> 4.7/4.8 staff approve -> 5.16 payment -> 3.7 prescription
+#  9) 8.1 check notifications for patient/doctor/admin
+# =============================================================================

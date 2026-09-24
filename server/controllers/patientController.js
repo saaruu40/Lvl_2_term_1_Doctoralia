@@ -282,6 +282,7 @@ const getPatientDepartments = async (req, res) => {
         department_name,
         description
        FROM department
+       WHERE (status = 'active' OR status IS NULL)
        ORDER BY department_name ASC`
     );
 
@@ -466,18 +467,15 @@ const getAvailableSchedulesByDate = async (req, res) => {
 const createAppointment = async (req, res) => {
   const client = await pool.connect();
   try {
-    const {
-      patient_id,
-      doctor_id,
-      schedule_id,
-      hospital_id,
-    } = req.body;
+    // patient_id MUST come from verified JWT, not body (spec)
+    const patient_id = req.user && req.user.patient_id;
+    if (!patient_id) {
+      return res.status(401).json({ message: "Unauthorized. Please login as patient." });
+    }
+    const { doctor_id, schedule_id, hospital_id } = req.body;
 
-    if (!patient_id || !doctor_id) {
-      return res.status(400).json({
-        message:
-          "Patient ID and Doctor ID are required.",
-      });
+    if (!doctor_id) {
+      return res.status(400).json({ message: "Doctor ID is required." });
     }
     if (!schedule_id) {
       return res.status(400).json({ message: "schedule_id is required. Select an available schedule for the chosen date." });
@@ -587,17 +585,34 @@ const createAppointment = async (req, res) => {
       [patient_id, doctor_id, schedule_id, finalHospitalId]
     );
 
+    // Fee via calculate_appointment_fee function (uses existing fee columns)
+    let fee = null;
+    try {
+      const feeRes = await client.query(`SELECT calculate_appointment_fee($1,$2) AS fee`, [patient_id, doctor_id]);
+      fee = feeRes.rows[0] ? Number(feeRes.rows[0].fee) : null;
+    } catch (e) {
+      // function not yet migrated or error — ignore, keep appointment success
+      fee = null;
+    }
+
     await client.query("COMMIT");
 
     return res.status(201).json({
       message: "Appointment request submitted successfully.",
       appointment: result.rows[0],
+      fee,
     });
 
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch(_){}
     console.error("Create appointment error:", error);
-    return res.status(500).json({ message: "Could not create appointment.", error: error.message });
+    const msg = error.message || "";
+    // Database trigger check_department_active_on_appointment is the sole source of truth.
+    // Backend does NOT re-implement the rule; it only forwards the PostgreSQL error.
+    if (msg.includes("This department is currently unavailable") || (error.code === "P0001" && msg.toLowerCase().includes("unavailable"))) {
+      return res.status(400).json({ message: "This department is currently unavailable. New appointments cannot be booked for this department.", error: msg });
+    }
+    return res.status(500).json({ message: "Could not create appointment.", error: msg });
   } finally {
     client.release();
   }
@@ -1123,6 +1138,58 @@ const getAvailableStaff = async (
     });
   }
 };
+
+// Public: doctors needing staff — uses get_doctors_needing_staff() (needs_staff flag + NOT EXISTS)
+const getDoctorsWithoutStaff = async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM get_doctors_needing_staff()`);
+    return res.status(200).json({ doctors: result.rows });
+  } catch (error) {
+    // fallback to old function if new not yet migrated
+    try {
+      const fb = await pool.query(`SELECT * FROM get_doctors_without_staff()`);
+      return res.status(200).json({ doctors: fb.rows });
+    } catch (_) {
+      return res.status(500).json({ message: "Could not fetch doctors looking for staff.", error: error.message });
+    }
+  }
+};
+
+// Public: generic staff-required boolean for Home — no doctor details (global available check: shobi unavailable holei true)
+const getStaffRequiredStatus = async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT is_staff_required() AS staff_required`);
+    return res.status(200).json({ staff_required: !!result.rows[0].staff_required });
+  } catch (error) {
+    // fallback: live query with global check if function not yet migrated
+    try {
+      const fb = await pool.query(`
+        SELECT (
+          NOT EXISTS (
+            SELECT 1 FROM staff s
+            WHERE s.approval_status = 'approved'
+              AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+              AND NOT EXISTS (SELECT 1 FROM staff_assignment sa2 WHERE sa2.staff_id = s.staff_id AND sa2.status = 'ACTIVE' AND (sa2.end_date IS NULL OR sa2.end_date > NOW()))
+          )
+          AND EXISTS (
+            SELECT 1 FROM doctor d
+            LEFT JOIN department dep ON dep.department_id = d.department_id
+            WHERE d.approval_status = 'approved'
+              AND (d.suspended_until IS NULL OR d.suspended_until <= NOW())
+              AND (dep.status IS NULL OR dep.status = 'active')
+              AND NOT EXISTS (
+                SELECT 1 FROM staff_assignment sa
+                WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+              )
+          )
+        ) AS staff_required
+      `);
+      return res.status(200).json({ staff_required: !!fb.rows[0].staff_required });
+    } catch (_) {
+      return res.status(500).json({ message: "Could not fetch staff required status.", error: error.message });
+    }
+  }
+};
 const createPatientComplaint = async (
   req,
   res
@@ -1609,6 +1676,8 @@ module.exports = {
   getDoctorDetails,
   getDoctorAvailableSchedules,
   getAvailableStaff,
+  getDoctorsWithoutStaff,
+  getStaffRequiredStatus,
 
   createAppointment,
   getPatientAppointments,

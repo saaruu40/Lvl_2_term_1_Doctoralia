@@ -1,0 +1,394 @@
+# =============================================================================
+# Doctor — All Operations — Doctoralia
+# =============================================================================
+# Base: http://localhost:5000
+# Routes: server/routes/doctorRoutes.js + server/controllers/doctorController.js
+#         + server/controllers/doctorScheduleController.js + server/utils/scheduleWindow.js
+# Auth: JWT Bearer — role "doctor", server/middleware/authMiddleware.js
+# Timezone: Asia/Dhaka — TEMP TESTING window 1:30 AM–12:00 PM, dates today→Dec31 (was 12:55-18:00 tomorrow→Dec31)
+#
+# HOW TO USE:
+#  1. GET /api/departments (public) to get department_id
+#  2. POST /api/doctors/apply (public multipart) → admin approves
+#  3. POST /api/doctors/login → copy token → paste into @doctorToken
+#  4. Every 🔒 block below sends Authorization: Bearer {{doctorToken}}
+# =============================================================================
+
+@baseUrl = http://localhost:5000
+@doctorToken = PASTE_DOCTOR_JWT_HERE
+@adminToken = PASTE_ADMIN_JWT_HERE
+# for 3.1b disabled-dept manual check, paste admin token from POST /api/admin/login
+
+# -------------------------------------------------------------------------
+# 0. Health — public
+# -------------------------------------------------------------------------
+
+### 0.1 Root
+GET {{baseUrl}}/
+
+### 0.2 Test DB
+GET {{baseUrl}}/api/test-db
+
+# -------------------------------------------------------------------------
+# 1. Departments (public — needed for registration dropdown) — now active-only
+# -------------------------------------------------------------------------
+
+### 1.1 List active departments — public — GET /api/departments (WHERE status='active' OR NULL)
+GET {{baseUrl}}/api/departments
+
+### 1.2 Search — public
+GET {{baseUrl}}/api/departments?search=Cardio
+
+### 1.3 Get by ID — public
+GET {{baseUrl}}/api/departments/1
+
+# -------------------------------------------------------------------------
+# 2. Doctor Auth — public
+# -------------------------------------------------------------------------
+
+### 2.1 Register — public — POST /api/doctors/apply — multipart, 5MB, field profile_photo
+# Required: department_id (must be active), full_name, email (unique), password, phone_number,
+# qualification, specification, medical_registration_no (unique), new_patient_fee, followup_fee, max_patient_num
+# Expected 201: { doctor } | 400 inactive dept | 409 dup
+POST {{baseUrl}}/api/doctors/apply
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="department_id"
+
+1
+------WebKitFormBoundary
+Content-Disposition: form-data; name="full_name"
+
+Dr. Arif Rahman
+------WebKitFormBoundary
+Content-Disposition: form-data; name="email"
+
+arif.rahman@example.com
+------WebKitFormBoundary
+Content-Disposition: form-data; name="password"
+
+Doctor@123
+------WebKitFormBoundary
+Content-Disposition: form-data; name="phone_number"
+
+01710000001
+------WebKitFormBoundary
+Content-Disposition: form-data; name="qualification"
+
+MBBS, FCPS (Medicine)
+------WebKitFormBoundary
+Content-Disposition: form-data; name="specification"
+
+Cardiology
+------WebKitFormBoundary
+Content-Disposition: form-data; name="medical_registration_no"
+
+BMDC-2026-0001
+------WebKitFormBoundary
+Content-Disposition: form-data; name="new_patient_fee"
+
+800
+------WebKitFormBoundary
+Content-Disposition: form-data; name="followup_fee"
+
+500
+------WebKitFormBoundary
+Content-Disposition: form-data; name="max_patient_num"
+
+20
+------WebKitFormBoundary
+Content-Disposition: form-data; name="profile_photo"; filename="doctor.jpg"
+Content-Type: image/jpeg
+
+< ./server/uploads/doctors/doctor.jpg
+------WebKitFormBoundary--
+
+### 2.2 Login — public — POST /api/doctors/login — ⭐ RETURNS TOKEN
+# Checks pending/rejected 403, clears expired suspension. Returns { token, doctor }
+# @name doctorLogin
+POST {{baseUrl}}/api/doctors/login
+Content-Type: application/json
+
+{
+  "email": "arif.rahman@example.com",
+  "password": "Doctor@123"
+}
+
+# -------------------------------------------------------------------------
+# 3. Doctor — Profile & Dashboard & Appointments — 🔒 doctor
+# -------------------------------------------------------------------------
+
+### 3.1 Get own profile — 🔒 doctor — GET /api/doctors/profile — now returns department_status (active/inactive)
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{doctorToken}}
+# Expected 200: { doctor: { doctor_id, department_id, department_name, department_status:"active"|"inactive"|null, ... } }
+# If dept disabled → department_status:"inactive" and dashboard shows "Your department is currently disabled." (DoctorDashboard.jsx:1758)
+
+### 3.1a Profile returns department_status — active case (no disable)
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{doctorToken}}
+# Assert: response.body.doctor.department_status in ["active", null] when dept enabled
+
+### 3.1b Disabled dept — admin disables, then profile reflects inactive
+# Step 1: admin disables department (use admin token) — PUT /api/admin/departments/:id/disable
+# PUT {{baseUrl}}/api/admin/departments/1/disable — expect 200 "Department disabled successfully."
+# Step 2: same doctor GET {{baseUrl}}/api/doctors/profile — expect department_status:"inactive" → frontend banner
+# Step 3: re-enable — PUT {{baseUrl}}/api/admin/departments/1/enable — then GET profile → department_status:"active" → banner hidden
+PUT {{baseUrl}}/api/admin/departments/1/disable
+Authorization: Bearer {{adminToken}}
+
+### 3.1c Re-enable check — GET profile returns active again
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{doctorToken}}
+
+### 3.2 Dashboard stats — 🔒 doctor — GET /api/doctors/dashboard/stats
+GET {{baseUrl}}/api/doctors/dashboard/stats
+Authorization: Bearer {{doctorToken}}
+
+### 3.3 List own appointments — 🔒 doctor — GET /api/doctors/appointments
+GET {{baseUrl}}/api/doctors/appointments
+Authorization: Bearer {{doctorToken}}
+
+### 3.4 Filter by schedule — 🔒 doctor — GET /api/doctors/appointments?schedule_id=1
+GET {{baseUrl}}/api/doctors/appointments?schedule_id=1
+Authorization: Bearer {{doctorToken}}
+
+### 3.5 Get hospitals — 🔒 doctor — GET /api/doctors/hospitals
+GET {{baseUrl}}/api/doctors/hospitals
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 4. Doctor — Medicines / Tests — 🔒 doctor
+# -------------------------------------------------------------------------
+
+### 4.1 Medicines — 🔒 doctor — GET /api/doctors/medicines
+GET {{baseUrl}}/api/doctors/medicines
+Authorization: Bearer {{doctorToken}}
+
+### 4.2 Tests — 🔒 doctor — GET /api/doctors/tests
+GET {{baseUrl}}/api/doctors/tests
+Authorization: Bearer {{doctorToken}}
+
+### 4.3 Add medicine — 🔒 doctor — POST /api/doctors/add-medicine
+POST {{baseUrl}}/api/doctors/add-medicine
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "medicine_name": "Napa Extra",
+  "strength": "500mg",
+  "medicine_type": "Tablet"
+}
+
+### 4.4 Add test — 🔒 doctor — POST /api/doctors/add-test
+POST {{baseUrl}}/api/doctors/add-test
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "test_name": "Blood Sugar Fasting",
+  "description": "Fasting blood glucose level",
+  "estimated_cost": 350.00
+}
+
+# -------------------------------------------------------------------------
+# 5. Doctor — Prescription — 🔒 doctor — transactional, fires trg_prescription_notification
+# -------------------------------------------------------------------------
+
+### 5.1 Create prescription — 🔒 doctor — POST /api/doctors/prescriptions — confirmed only
+POST {{baseUrl}}/api/doctors/prescriptions
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "appointment_id": 1,
+  "diagnosis": "Acute viral fever with mild dehydration",
+  "advice": "Take rest for 3 days, drink plenty of fluids.",
+  "medicines": [
+    { "medicine_id": 1, "dosage": "500mg", "frequency": "3 times daily", "duration": "5 days", "instruction": "After meal" },
+    { "medicine_id": 2, "dosage": "20mg", "frequency": "Once daily", "duration": "7 days", "instruction": "Before breakfast" }
+  ],
+  "tests": [ { "test_id": 1 }, { "test_id": 2 } ]
+}
+
+# -------------------------------------------------------------------------
+# 6. Doctor — Referral — 🔒 doctor
+# -------------------------------------------------------------------------
+
+### 6.1 Referral targets — 🔒 doctor — GET /api/doctors/referral-doctors
+GET {{baseUrl}}/api/doctors/referral-doctors
+Authorization: Bearer {{doctorToken}}
+
+### 6.2 Create referral — 🔒 doctor — POST /api/doctors/referrals — fires trg_referral_notification
+POST {{baseUrl}}/api/doctors/referrals
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "appointment_id": 1,
+  "referred_to": 2,
+  "reason": "Requires specialized neurological evaluation — please review ECG."
+}
+
+### 6.3 Sent referrals — 🔒 doctor — GET /api/doctors/referrals/sent
+GET {{baseUrl}}/api/doctors/referrals/sent
+Authorization: Bearer {{doctorToken}}
+
+### 6.4 Received referrals — 🔒 doctor — GET /api/doctors/referrals/received
+GET {{baseUrl}}/api/doctors/referrals/received
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 7. Doctor — Complaints — 🔒 doctor — fires trg_complaint_admin
+# -------------------------------------------------------------------------
+
+### 7.1 Complaint targets — 🔒 doctor — GET /api/doctors/complaint-targets
+GET {{baseUrl}}/api/doctors/complaint-targets
+Authorization: Bearer {{doctorToken}}
+
+### 7.2 Create complaint against patient — 🔒 doctor — POST /api/doctors/complaints
+POST {{baseUrl}}/api/doctors/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "appointment_id": 1,
+  "complaint_type": "Misbehavior",
+  "description": "Patient repeatedly missed follow-up without notice."
+}
+
+### 7.3 Create complaint against staff — 🔒 doctor
+POST {{baseUrl}}/api/doctors/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "staff",
+  "against_id": 1,
+  "complaint_type": "Unprofessional conduct",
+  "description": "Staff unavailable during assigned duty hours."
+}
+
+### 7.4 My complaint history — 🔒 doctor — GET /api/doctors/complaints
+GET {{baseUrl}}/api/doctors/complaints
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 8. Doctor — Schedule Management — 🔒 doctor — window 1:30-12:00 today→Dec31
+# -------------------------------------------------------------------------
+
+### 8.1 Window info — 🔒 doctor — GET /api/doctors/schedules/window — {currentDate, targetDate, isOpen, window:"01:30-12:00"}
+GET {{baseUrl}}/api/doctors/schedules/window
+Authorization: Bearer {{doctorToken}}
+
+### 8.2 List my schedules — 🔒 doctor — GET /api/doctors/schedules — today→Dec31
+GET {{baseUrl}}/api/doctors/schedules
+Authorization: Bearer {{doctorToken}}
+
+### 8.3 Create schedule — 🔒 doctor — POST /api/doctors/schedules — inside window only else 403 WINDOW_CLOSED
+POST {{baseUrl}}/api/doctors/schedules
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "available_date": "2026-09-24",
+  "start_time": "10:00",
+  "end_time": "11:00",
+  "hospital_id": 1,
+  "status": "AVAILABLE"
+}
+
+### 8.4 Create minimal (defaults to today) — 🔒 doctor
+POST {{baseUrl}}/api/doctors/schedules
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "start_time": "14:00",
+  "end_time": "15:00",
+  "hospital_id": 1
+}
+
+### 8.5 Update own schedule — 🔒 doctor — PUT /api/doctors/schedules/:id — window+today+not expired/WORKING
+PUT {{baseUrl}}/api/doctors/schedules/1
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "available_date": "2026-09-24",
+  "start_time": "09:00",
+  "end_time": "10:00",
+  "hospital_id": 1,
+  "status": "AVAILABLE"
+}
+
+### 8.6 Toggle availability — 🔒 doctor — PATCH /api/doctors/schedules/:id/availability
+PATCH {{baseUrl}}/api/doctors/schedules/1/availability
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "status": "UNAVAILABLE"
+}
+
+### 8.7 Toggle back — 🔒 doctor
+PATCH {{baseUrl}}/api/doctors/schedules/1/availability
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "slot_status": "AVAILABLE"
+}
+
+### 8.8 Delete own slot — 🔒 doctor — DELETE /api/doctors/schedules/:id
+DELETE {{baseUrl}}/api/doctors/schedules/1
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 9. Doctor — Staff Assignment — 🔒 doctor
+# -------------------------------------------------------------------------
+
+### 9.1 My staff — 🔒 doctor — GET /api/doctors/my-staff
+GET {{baseUrl}}/api/doctors/my-staff
+Authorization: Bearer {{doctorToken}}
+
+### 9.2 Available staff — 🔒 doctor — GET /api/doctors/available-staff
+GET {{baseUrl}}/api/doctors/available-staff
+Authorization: Bearer {{doctorToken}}
+
+### 9.3 Assign staff — 🔒 doctor — POST /api/doctors/assign-staff
+POST {{baseUrl}}/api/doctors/assign-staff
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "staff_id": 1
+}
+
+# -------------------------------------------------------------------------
+# 10. Notifications (doctor view) — public
+# -------------------------------------------------------------------------
+
+### 10.1 Doctor notifications — GET /api/notifications/doctor/:id
+GET {{baseUrl}}/api/notifications/doctor/1
+Authorization: Bearer {{doctorToken}}
+
+# =============================================================================
+# 11. Frontend Auth (no API � JWT reuse) � manual verify
+# =============================================================================
+# Auto logout 5m: client/src/hooks/useInactivityLogout.js in DoctorDashboard.jsx:452.
+#  Manual: login ? /doctor-dashboard ? idle 5m ? cleared + redirect to /doctor-login ? banner "You have been logged out due to inactivity." (DoctorLogin.jsx:15).
+# Already logged in: visit /doctor-login while any token present ? block + Logout.
+# Protected: /doctor-dashboard without token ? redirect to /doctor-login; admin token ? redirect to /login.
+
+### 11.1 Smoke 401 without token � GET /api/doctors/profile without Authorization ? 401
+GET {{baseUrl}}/api/doctors/profile
+# No Authorization � expect 401
+
+### 11.2 Smoke bad token
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer bad.token.here
+

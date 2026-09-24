@@ -31,12 +31,17 @@ const applyDoctor = async (req, res) => {
       });
     }
     const deptCheck = await pool.query(
-      `SELECT department_id FROM department WHERE department_id = $1`,
+      `SELECT department_id, status FROM department WHERE department_id = $1`,
       [deptIdNum]
     );
     if (deptCheck.rows.length === 0) {
       return res.status(404).json({
         message: "Selected department does not exist or has been deleted.",
+      });
+    }
+    if (deptCheck.rows[0].status === 'inactive') {
+      return res.status(400).json({
+        message: "Selected department is currently disabled. Please choose an active department.",
       });
     }
 
@@ -459,7 +464,8 @@ const getDoctorProfile = async (req, res) => {
         d.approval_status,
 
         dep.department_id,
-        dep.department_name
+        dep.department_name,
+        dep.status AS department_status
 
        FROM doctor d
 

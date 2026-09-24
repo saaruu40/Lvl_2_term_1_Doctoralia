@@ -17,6 +17,8 @@ const {
   getDoctorDetails,
   getDoctorAvailableSchedules,
   getAvailableStaff,
+  getDoctorsWithoutStaff,
+  getStaffRequiredStatus,
 
   createAppointment,
   getPatientAppointments,
@@ -73,6 +75,16 @@ router.get(
 );
 
 router.get(
+  "/staff-required",
+  getStaffRequiredStatus
+);
+
+router.get(
+  "/doctors/looking-for-staff",
+  getDoctorsWithoutStaff
+);
+
+router.get(
   "/departments",
   getPatientDepartments
 );
@@ -119,6 +131,8 @@ router.put(
 
 router.post(
   "/appointments",
+  authMiddleware,
+  roleMiddleware("patient"),
   createAppointment
 );
 

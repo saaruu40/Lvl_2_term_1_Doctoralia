@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const {
   getTargetDateStr,
   getYearEndDateStr,
+  getCurrentDateStr,
   getScheduleWindowStatus,
   assertScheduleWindow,
   assertTargetDate,
@@ -82,17 +83,17 @@ const getMySchedules = async (req, res) => {
     const nowForFilter = new Date();
     const windowForFilter = getScheduleWindowStatus(nowForFilter);
     const yearEnd = getYearEndDateStr(nowForFilter);
-    // Same-year list: any schedule from tomorrow through Dec 31 of same Dhaka year (previous days hidden)
+    // TEMP TESTING: any schedule from today through Dec 31 of same Dhaka year
     const result = await pool.query(
       `SELECT s.schedule_id, TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, s.created_at, s.updated_at,
-              ds.status as slot_status, ds.doctor_id,
-              h.hospital_name, h.city
-       FROM schedule s
-       JOIN doctor_schedule ds ON s.schedule_id = ds.schedule_id
-       LEFT JOIN hospital h ON s.hospital_id = h.hospital_id
-       WHERE ds.doctor_id = $1 AND s.available_date >= $2 AND s.available_date <= $3
-       ORDER BY s.available_date ASC, s.start_time ASC`,
-      [doctorId, windowForFilter.targetDate, yearEnd]
+               ds.status as slot_status, ds.doctor_id,
+               h.hospital_name, h.city
+        FROM schedule s
+        JOIN doctor_schedule ds ON s.schedule_id = ds.schedule_id
+        LEFT JOIN hospital h ON s.hospital_id = h.hospital_id
+        WHERE ds.doctor_id = $1 AND s.available_date >= $2 AND s.available_date <= $3
+        ORDER BY s.available_date ASC, s.start_time ASC`,
+      [doctorId, windowForFilter.currentDate, yearEnd]
     );
 
     const now = new Date();
@@ -102,10 +103,10 @@ const getMySchedules = async (req, res) => {
       let computedStatus = s.slot_status;
       if (expired && s.slot_status === "AVAILABLE") computedStatus = "expired";
       if (expired) computedStatus = s.slot_status === "WORKING" ? "WORKING" : s.slot_status === "UNAVAILABLE" ? "UNAVAILABLE" : "expired";
-      //const dateStr = String(s.available_date).split("T")[0];
+      // TEMP TESTING: window logic now applies to today (was tomorrow)
       const dateStr = s.available_date;
-      const is_tomorrow = dateStr === windowStatus.targetDate;
-      // Q2: if window is over (not open), tomorrow's AVAILABLE slots display as UNAVAILABLE
+      const is_tomorrow = dateStr === windowStatus.currentDate;
+      // TEMP: if window is closed, today's AVAILABLE slots display as UNAVAILABLE
       if (is_tomorrow && !windowStatus.isOpen && !expired && computedStatus === "AVAILABLE") {
         computedStatus = "UNAVAILABLE";
       }
@@ -154,11 +155,11 @@ const createSchedule = async (req, res) => {
 
     const now = new Date();
     try {
-      const targetDate = getTargetDateStr(now);
-      const yearEnd = getYearEndDateStr(now);
+      // TEMP TESTING: default to today (was targetDate = tomorrow)
+      const today = getCurrentDateStr(now);
       let { available_date, start_time, end_time, hospital_id, status } = req.body;
-      if (!available_date) available_date = targetDate;
-      // Allow any date from tomorrow through Dec 31 of same year - no window restriction for creation
+      if (!available_date) available_date = today;
+      // TEMP TESTING: Allow any date from today through Dec 31 of same year
       assertTargetDateInSameYear(available_date, now);
       // Normalize to YYYY-MM-DD
       available_date = String(available_date).split("T")[0];
@@ -255,10 +256,10 @@ const updateSchedule = async (req, res) => {
     );
     if (existing.rows.length === 0) return res.status(404).json({ message: "Schedule not found or not owned by you." });
     const schedule = existing.rows[0];
-    // Allow editing any same-year future schedule (from tomorrow through Dec 31); window still gated - use DB formatted date to avoid TZ shift
+    // TEMP TESTING: Allow editing any same-year schedule (from today through Dec 31); window 1:30 AM–12:00 PM still gated
     const existingDateStr = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
     try { assertTargetDateInSameYear(existingDateStr, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be edited during the 12:55 PM–6:00 PM window.", details: e.details });
+      return res.status(400).json({ message: "Only same-year schedules (from today through Dec 31) can be edited during the 1:30 AM–12:00 PM window.", details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired schedule cannot be modified." });
@@ -345,7 +346,7 @@ const deleteSchedule = async (req, res) => {
     const schedule = existing.rows[0];
     const schDateStr = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
     try { assertTargetDateInSameYear(schDateStr, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be deleted.", code: e.code || undefined, details: e.details });
+      return res.status(400).json({ message: "Only same-year schedules (from today through Dec 31) can be deleted.", code: e.code || undefined, details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired schedule cannot be deleted." });
@@ -395,7 +396,7 @@ const updateAvailability = async (req, res) => {
     const schedule = existing.rows[0];
     const avDateStrUpd = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
     try { assertTargetDateInSameYear(avDateStrUpd, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year future schedules (from tomorrow through Dec 31) can be updated.", code: e.code || undefined, details: e.details });
+      return res.status(400).json({ message: "Only same-year schedules (from today through Dec 31) can be updated.", code: e.code || undefined, details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired slot cannot be updated." });

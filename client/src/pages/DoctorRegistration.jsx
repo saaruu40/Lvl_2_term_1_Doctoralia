@@ -37,7 +37,9 @@ const DoctorRegistration = () => {
         const res = await fetch("http://localhost:5000/api/departments");
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || "Could not load departments.");
-        setDepartments(data.departments || []);
+        // Defensive filter: only active departments (backend already filters, but guard stale/uncached data)
+        const activeOnly = (data.departments || []).filter((d) => !d.status || d.status === "active");
+        setDepartments(activeOnly);
       } catch (err) {
         setDeptError(err.message);
         setDepartments([]);
@@ -180,7 +182,7 @@ const DoctorRegistration = () => {
               ) : departments.length === 0 ? (
                 <div>
                   <p style={{ fontSize: "0.85rem", color: "#b00020", marginBottom: 6 }}>
-                    No departments are currently available. Please contact the administrator.
+                    No active departments are currently available. Please contact the administrator.
                   </p>
                   <select id="department_id" name="department_id" value={formData.department_id} disabled required>
                     <option value="">No departments available</option>
@@ -341,7 +343,7 @@ const DoctorRegistration = () => {
             type="submit"
             className="doctor-submit-button"
             disabled={loading || (!deptLoading && departments.length === 0)}
-            title={!deptLoading && departments.length === 0 ? "No departments available" : undefined}
+            title={!deptLoading && departments.length === 0 ? "No active departments available" : undefined}
           >
             {loading ? "Submitting Application..." : "Submit Application"}
           </button>

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/AdminDashboard.css";
 import logo from "../assets/logo.jfif";
 import axios from "axios";
+import useInactivityLogout from "../hooks/useInactivityLogout";
 const API = "http://localhost:5000/api/admin";
 
 const authFetch = async (url, options = {}) => {
@@ -74,6 +75,20 @@ function AdminDashboard() {
   const [deptSearch, setDeptSearch] = useState("");
 
   const [message, setMessage] = useState("");
+
+  // auto logout on inactivity (5 min) — reuses existing JWT, frontend UX only, backend still enforces 1d expiry
+  const handleInactivityLogout = useCallback(() => {
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    localStorage.setItem("inactive_logout", "1");
+    document.body.style.overflow = "auto";
+    document.body.style.pointerEvents = "auto";
+    window.location.replace("/login");
+  }, []);
+  useInactivityLogout(handleInactivityLogout, 5 * 60 * 1000);
 
   useEffect(() => {
     if (!storedAdmin) {
@@ -671,12 +686,13 @@ const enableDepartment = async (departmentId) => {
 
   const logout = () => {
     localStorage.removeItem("admin");
-     localStorage.removeItem("token");
-   // navigate("/login");
-     document.body.style.overflow = "auto";
-  document.body.style.pointerEvents = "auto";
-
-  window.location.replace("/login");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    document.body.style.overflow = "auto";
+    document.body.style.pointerEvents = "auto";
+    window.location.replace("/login");
   };
 
 

@@ -9,6 +9,7 @@ const {
   getAdminRegistrationStatus,
 
   getAdminProfile,
+  getAdminPublicContact,
   getDashboardStats,
 
   getPendingDoctors,
@@ -38,6 +39,9 @@ const {
 
 const router = express.Router();
 
+
+// Public contact — Home emergency section (only email, no phone/password)
+router.get("/public-contact", getAdminPublicContact);
 
 // Authentication
 router.post("/register", registerAdmin);

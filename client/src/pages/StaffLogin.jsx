@@ -117,7 +117,7 @@
 // };
 
 // export default StaffLogin;
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/DoctorAuth.css";
 
@@ -132,6 +132,27 @@ const StaffLogin = () => {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inactiveMsg, setInactiveMsg] = useState("");
+
+  useEffect(() => {
+    if (localStorage.getItem("inactive_logout") === "1") {
+      setInactiveMsg("You have been logged out due to inactivity.");
+      localStorage.removeItem("inactive_logout");
+    }
+  }, []);
+
+  const token = localStorage.getItem("token");
+  const alreadyLoggedIn = !!token && (!!localStorage.getItem("admin") || !!localStorage.getItem("doctor") || !!localStorage.getItem("staff") || !!localStorage.getItem("patient"));
+
+  const handleAlreadyLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("inactive_logout");
+    window.location.reload();
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -189,6 +210,21 @@ const StaffLogin = () => {
     }
   };
 
+  if (alreadyLoggedIn) {
+    return (
+      <div className="doctor-auth-page">
+        <div className="doctor-login-card">
+          <div className="doctor-auth-header">
+            <h1>Staff Login</h1>
+            <p>You are already logged in. Please logout first.</p>
+          </div>
+          {inactiveMsg && <div className="doctor-message error">{inactiveMsg}</div>}
+          <button type="button" className="doctor-submit-button" onClick={handleAlreadyLogout}>Logout</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="doctor-auth-page">
       <div className="doctor-login-card">
@@ -196,6 +232,10 @@ const StaffLogin = () => {
           <h1>Staff Login</h1>
           <p>Only admin-approved staff accounts can login</p>
         </div>
+
+        {inactiveMsg && (
+          <div className="doctor-message error">{inactiveMsg}</div>
+        )}
 
         {message && (
           <div className={`doctor-message ${messageType}`}>{message}</div>

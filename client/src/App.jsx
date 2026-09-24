@@ -88,6 +88,7 @@ import {
 } from "react-router-dom";
 
 import Header from "./components/Header";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 import AdminRegister from "./pages/AdminRegister";
 import AdminLogin from "./pages/AdminLogin";
@@ -105,12 +106,16 @@ import PatientLogin from "./pages/PatientLogin";
 
 import AdminDashboard from "./pages/AdminDashboard";
 import PatientDashboard from "./pages/PatientDashboard";
+import Home from "./pages/Home";
+import DoctorProfile from "./pages/DoctorProfile";
 
 
 function App() {
   const location = useLocation();
 
   const hideHeader =
+    location.pathname === "/" ||
+    location.pathname.startsWith("/doctors/") ||
     location.pathname === "/admin-dashboard" ||
     location.pathname === "/patient-dashboard" ||
     location.pathname === "/staff-dashboard" ||
@@ -122,17 +127,9 @@ function App() {
 
       <Routes>
 
-        {/* DEFAULT - admin registration disabled, only one admin (sara) */}
-
-        <Route
-          path="/"
-          element={
-            <Navigate
-              to="/login"
-              replace
-            />
-          }
-        />
+        {/* HOME - public */}
+        <Route path="/" element={<Home />} />
+        <Route path="/doctors/:id" element={<DoctorProfile />} />
 
 
         {/* ADMIN - registration disabled singleton */}
@@ -149,7 +146,11 @@ function App() {
 
         <Route
           path="/admin-dashboard"
-          element={<AdminDashboard />}
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          }
         />
 
 
@@ -167,7 +168,11 @@ function App() {
 
         <Route
           path="/doctor-dashboard"
-          element={<DoctorDashboard />}
+          element={
+            <ProtectedRoute allowedRoles={["doctor"]}>
+              <DoctorDashboard />
+            </ProtectedRoute>
+          }
         />
 
 
@@ -185,7 +190,11 @@ function App() {
 
         <Route
           path="/staff-dashboard"
-          element={<StaffDashboard />}
+          element={
+            <ProtectedRoute allowedRoles={["staff"]}>
+              <StaffDashboard />
+            </ProtectedRoute>
+          }
         />
 
 
@@ -203,7 +212,11 @@ function App() {
 
         <Route
           path="/patient-dashboard"
-          element={<PatientDashboard />}
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <PatientDashboard />
+            </ProtectedRoute>
+          }
         />
 
 

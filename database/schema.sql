@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS department (
     department_name VARCHAR(100),
     description TEXT,
     created_by INTEGER,
-    status VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','inactive')),
 
     CONSTRAINT fk_department_created_by
         FOREIGN KEY (created_by)
@@ -174,6 +174,14 @@ DO $$ BEGIN
   -- backfill patient_id from appointment where possible
   BEGIN
     UPDATE referral r SET patient_id = a.patient_id FROM appointment a WHERE r.appointment_id = a.appointment_id AND r.patient_id IS NULL;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  -- department status: ensure column exists for existing DBs, default active for legacy rows
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='department' AND column_name='status') THEN
+    ALTER TABLE department ADD COLUMN status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active','inactive'));
+  END IF;
+  BEGIN
+    UPDATE department SET status='active' WHERE status IS NULL;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
 END $$;
@@ -738,3 +746,362 @@ ON complaint
 FOR EACH ROW
 
 EXECUTE FUNCTION complaint_admin_notification();
+
+-- =====================================================
+-- BLOCK NEW APPOINTMENTS FOR INACTIVE DEPARTMENTS
+-- Business rule enforced ONLY by database trigger.
+-- Backend must NOT duplicate this check; it only forwards
+-- the PostgreSQL error message to the frontend.
+-- =====================================================
+CREATE OR REPLACE FUNCTION check_department_active_on_appointment()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  dept_status VARCHAR(20);
+BEGIN
+  SELECT d.status INTO dept_status
+  FROM doctor doc
+  LEFT JOIN department d ON d.department_id = doc.department_id
+  WHERE doc.doctor_id = NEW.doctor_id;
+
+  IF dept_status = 'inactive' THEN
+    RAISE EXCEPTION 'This department is currently unavailable. New appointments cannot be booked for this department.' USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_appointment_department_check ON appointment;
+CREATE TRIGGER trg_appointment_department_check
+BEFORE INSERT ON appointment
+FOR EACH ROW EXECUTE FUNCTION check_department_active_on_appointment();
+
+-- =====================================================
+-- FUNCTION: get_doctors_without_staff
+-- Returns ACTIVE doctors who currently have NO ACTIVE staff
+-- Reuses existing staff_assignment table (status='ACTIVE')
+-- Uses NOT EXISTS, no needs_staff column/trigger
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_doctors_without_staff()
+RETURNS TABLE (
+  doctor_id INT,
+  full_name VARCHAR,
+  department_name VARCHAR,
+  profile_photo TEXT,
+  qualification VARCHAR,
+  specification VARCHAR
+) LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  SELECT d.doctor_id, d.full_name, dep.department_name, d.profile_photo, d.qualification, d.specification
+  FROM doctor d
+  LEFT JOIN department dep ON dep.department_id = d.department_id
+  WHERE d.approval_status = 'approved'
+    AND (d.suspended_until IS NULL OR d.suspended_until <= CURRENT_TIMESTAMP)
+    AND (dep.status IS NULL OR dep.status = 'active')
+    AND NOT EXISTS (
+      SELECT 1 FROM staff_assignment sa
+      WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE'
+    )
+  ORDER BY d.doctor_id;
+END;
+$$;
+
+-- Drop unused book_appointment procedure (checked: zero CALLs, not used by existing feature; Home task does not need it)
+DROP PROCEDURE IF EXISTS book_appointment(INT,INT,INT,INT,INT);
+DROP PROCEDURE IF EXISTS book_appointment(INT,INT,INT,INT);
+
+-- =====================================================
+-- FUNCTION: calculate_appointment_fee
+-- Returns new_patient_fee or followup_fee based on 90-day history
+-- Uses existing doctor.new_patient_fee / followup_fee and appointment.appointment_status='completed'
+-- =====================================================
+CREATE OR REPLACE FUNCTION calculate_appointment_fee(p_patient_id INT, p_doctor_id INT)
+RETURNS NUMERIC LANGUAGE plpgsql AS $$
+DECLARE
+  v_fee NUMERIC;
+  v_has_followup BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM appointment a
+    WHERE a.patient_id = p_patient_id
+      AND a.doctor_id = p_doctor_id
+      AND a.appointment_status = 'completed'
+      AND a.booking_date >= CURRENT_TIMESTAMP - INTERVAL '90 days'
+  ) INTO v_has_followup;
+
+  SELECT CASE WHEN v_has_followup THEN d.followup_fee ELSE d.new_patient_fee END INTO v_fee
+  FROM doctor d WHERE d.doctor_id = p_doctor_id;
+
+  IF v_fee IS NULL THEN
+    v_fee := 0;
+  END IF;
+
+  RETURN v_fee;
+END;
+$$;
+
+-- =====================================================
+-- PROCEDURE: book_appointment
+-- Multi-step booking workflow in DB (called inside Node transaction)
+-- Validates doctor/dept/schedule/duplicate/capacity and inserts appointment
+-- Keeps isSlotExpired / schedule-window checks in Node (utils/scheduleWindow)
+-- No payment logic
+-- =====================================================
+CREATE OR REPLACE PROCEDURE book_appointment(
+  p_patient_id INT,
+  p_doctor_id INT,
+  p_schedule_id INT,
+  p_hospital_id INT,
+  INOUT p_appointment_id INT
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_doctor_exists INT;
+  v_dept_status VARCHAR(20);
+  v_slot_status VARCHAR(20);
+  v_available_date DATE;
+  v_max INT;
+  v_cnt INT;
+  v_dup INT;
+BEGIN
+  -- 1. Doctor exists and active
+  SELECT max_patient_num INTO v_max FROM doctor
+  WHERE doctor_id = p_doctor_id AND approval_status = 'approved' AND (suspended_until IS NULL OR suspended_until <= CURRENT_TIMESTAMP);
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Doctor not found or not active.' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- 2. Department active
+  SELECT dep.status INTO v_dept_status
+  FROM doctor d LEFT JOIN department dep ON dep.department_id = d.department_id
+  WHERE d.doctor_id = p_doctor_id;
+  IF v_dept_status = 'inactive' THEN
+    RAISE EXCEPTION 'This department is currently unavailable. New appointments cannot be booked for this department.' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- 3. Schedule exists, belongs to doctor, available
+  SELECT s.available_date, ds.status INTO v_available_date, v_slot_status
+  FROM schedule s JOIN doctor_schedule ds ON s.schedule_id = ds.schedule_id
+  WHERE s.schedule_id = p_schedule_id AND ds.doctor_id = p_doctor_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Schedule not found for this doctor.' USING ERRCODE = 'P0003';
+  END IF;
+  IF v_slot_status <> 'AVAILABLE' THEN
+    RAISE EXCEPTION 'Selected slot is not available.' USING ERRCODE = 'P0004';
+  END IF;
+
+  -- 4. Duplicate check
+  SELECT COUNT(*) INTO v_dup FROM appointment
+  WHERE patient_id = p_patient_id AND doctor_id = p_doctor_id AND schedule_id = p_schedule_id
+    AND appointment_status IN ('pending','scheduled','confirmed');
+  IF v_dup > 0 THEN
+    RAISE EXCEPTION 'You already have an appointment for this schedule.' USING ERRCODE = 'P0005';
+  END IF;
+
+  -- 5. Capacity check
+  IF v_max IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_cnt FROM appointment
+    WHERE doctor_id = p_doctor_id AND schedule_id = p_schedule_id AND appointment_status IN ('scheduled','confirmed');
+    IF v_cnt >= v_max THEN
+      RAISE EXCEPTION 'This schedule has reached max capacity.' USING ERRCODE = 'P0006';
+    END IF;
+  END IF;
+
+  -- 6. Insert pending appointment
+  INSERT INTO appointment (patient_id, doctor_id, schedule_id, hospital_id, booking_date, appointment_status)
+  VALUES (p_patient_id, p_doctor_id, p_schedule_id, p_hospital_id, NOW(), 'pending')
+  RETURNING appointment_id INTO p_appointment_id;
+END;
+$$;
+
+-- =====================================================
+-- STAFF-REQUIRED FEATURE (Home Page)
+-- Minimal needs_staff flag + trigger for newly approved doctors
+-- =====================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='doctor' AND column_name='needs_staff') THEN
+    ALTER TABLE doctor ADD COLUMN needs_staff BOOLEAN DEFAULT FALSE;
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION set_doctor_needs_staff()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.approval_status = 'pending' AND NEW.approval_status = 'approved' THEN
+    -- Global check: only TRUE if NO ACTIVE assignment for this doctor AND NO available staff globally (shobi unavailable)
+    IF NOT EXISTS (
+      SELECT 1 FROM staff_assignment sa
+      WHERE sa.doctor_id = NEW.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+    ) AND NOT EXISTS (
+      SELECT 1 FROM staff s
+      WHERE s.approval_status = 'approved'
+        AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+        AND NOT EXISTS (
+          SELECT 1 FROM staff_assignment sa2
+          WHERE sa2.staff_id = s.staff_id AND sa2.status = 'ACTIVE' AND (sa2.end_date IS NULL OR sa2.end_date > NOW())
+        )
+    ) THEN
+      NEW.needs_staff := TRUE;
+    ELSE
+      NEW.needs_staff := FALSE;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_doctor_needs_staff ON doctor;
+CREATE TRIGGER trg_doctor_needs_staff
+BEFORE UPDATE OF approval_status ON doctor
+FOR EACH ROW EXECUTE FUNCTION set_doctor_needs_staff();
+
+CREATE OR REPLACE FUNCTION get_doctors_needing_staff()
+RETURNS TABLE (
+  doctor_id INT,
+  full_name VARCHAR,
+  department_name VARCHAR,
+  profile_photo TEXT,
+  qualification VARCHAR,
+  specification VARCHAR
+) LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  SELECT d.doctor_id, d.full_name, dep.department_name, d.profile_photo, d.qualification, d.specification
+  FROM doctor d
+  LEFT JOIN department dep ON dep.department_id = d.department_id
+  WHERE d.needs_staff = TRUE
+    AND d.approval_status = 'approved'
+    AND (d.suspended_until IS NULL OR d.suspended_until <= CURRENT_TIMESTAMP)
+    AND (dep.status IS NULL OR dep.status = 'active')
+    AND NOT EXISTS (
+      SELECT 1 FROM staff_assignment sa
+      WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+    )
+  ORDER BY d.doctor_id;
+END;
+$$;
+
+-- =====================================================
+-- FIX: backfill needs_staff for existing rows (global check: only TRUE if shobi unavailable)
+-- =====================================================
+DO $$ BEGIN
+  UPDATE doctor d SET needs_staff = (
+    CASE WHEN d.approval_status = 'approved'
+      AND (d.suspended_until IS NULL OR d.suspended_until <= NOW())
+      AND NOT EXISTS (SELECT 1 FROM staff_assignment sa WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW()))
+      AND NOT EXISTS (
+        SELECT 1 FROM staff s
+        WHERE s.approval_status = 'approved'
+          AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+          AND NOT EXISTS (SELECT 1 FROM staff_assignment sa2 WHERE sa2.staff_id = s.staff_id AND sa2.status = 'ACTIVE' AND (sa2.end_date IS NULL OR sa2.end_date > NOW()))
+      )
+    THEN TRUE ELSE FALSE END
+  );
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- =====================================================
+-- STAFF-ASSIGNMENT SYNC: keep doctor.needs_staff in sync with assignment state
+-- Advertisement = approved doctor with NO ACTIVE assignment → needs_staff TRUE
+-- Assigned → FALSE, Ended/Deleted → re-check
+-- =====================================================
+CREATE OR REPLACE FUNCTION sync_doctor_needs_staff()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE target_doctor INT;
+BEGIN
+  target_doctor := COALESCE(NEW.doctor_id, OLD.doctor_id);
+  UPDATE doctor d SET needs_staff = (
+    d.approval_status = 'approved'
+    AND (d.suspended_until IS NULL OR d.suspended_until <= NOW())
+    AND NOT EXISTS (SELECT 1 FROM staff_assignment sa WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW()))
+    AND NOT EXISTS (
+      SELECT 1 FROM staff s
+      WHERE s.approval_status = 'approved'
+        AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+        AND NOT EXISTS (SELECT 1 FROM staff_assignment sa2 WHERE sa2.staff_id = s.staff_id AND sa2.status = 'ACTIVE' AND (sa2.end_date IS NULL OR sa2.end_date > NOW()))
+    )
+  ) WHERE d.doctor_id = target_doctor;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_sync_needs_staff_on_insert ON staff_assignment;
+CREATE TRIGGER trg_sync_needs_staff_on_insert AFTER INSERT ON staff_assignment FOR EACH ROW EXECUTE FUNCTION sync_doctor_needs_staff();
+
+DROP TRIGGER IF EXISTS trg_sync_needs_staff_on_update ON staff_assignment;
+CREATE TRIGGER trg_sync_needs_staff_on_update AFTER UPDATE OF status, end_date ON staff_assignment FOR EACH ROW EXECUTE FUNCTION sync_doctor_needs_staff();
+
+DROP TRIGGER IF EXISTS trg_sync_needs_staff_on_delete ON staff_assignment;
+CREATE TRIGGER trg_sync_needs_staff_on_delete AFTER DELETE ON staff_assignment FOR EACH ROW EXECUTE FUNCTION sync_doctor_needs_staff();
+
+-- =====================================================
+-- STAFF TABLE SYNC: when global pool changes (approve/suspend), re-evaluate all doctors
+-- Global e available thakle ad show korbe na — tai staff approve/suspend e re-check
+-- =====================================================
+CREATE OR REPLACE FUNCTION sync_all_doctors_needs_staff_on_staff_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE global_available BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM staff s2
+    WHERE s2.approval_status = 'approved'
+      AND (s2.suspended_until IS NULL OR s2.suspended_until <= NOW())
+      AND NOT EXISTS (SELECT 1 FROM staff_assignment sa2 WHERE sa2.staff_id = s2.staff_id AND sa2.status = 'ACTIVE' AND (sa2.end_date IS NULL OR sa2.end_date > NOW()))
+  ) INTO global_available;
+
+  IF TG_OP = 'UPDATE' AND OLD.approval_status = NEW.approval_status AND COALESCE(OLD.suspended_until::text,'') = COALESCE(NEW.suspended_until::text,'') THEN
+    RETURN NEW;
+  END IF;
+
+  -- If global now has available, hide all ads; else show for those without ACTIVE
+  IF global_available THEN
+    UPDATE doctor SET needs_staff = FALSE WHERE needs_staff = TRUE;
+  ELSE
+    UPDATE doctor d SET needs_staff = (
+      d.approval_status = 'approved'
+      AND (d.suspended_until IS NULL OR d.suspended_until <= NOW())
+      AND NOT EXISTS (SELECT 1 FROM staff_assignment sa WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW()))
+    ) WHERE d.approval_status = 'approved';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_staff_needs_sync ON staff;
+CREATE TRIGGER trg_staff_needs_sync AFTER UPDATE OF approval_status, suspended_until ON staff FOR EACH ROW EXECUTE FUNCTION sync_all_doctors_needs_staff_on_staff_change();
+
+-- =====================================================
+-- FUNCTION: is_staff_required() — generic boolean for Home banner (no doctor details)
+-- TRUE only if at least one approved active doctor has NO ACTIVE staff AND globally no available staff (shobi unavailable)
+-- =====================================================
+CREATE OR REPLACE FUNCTION is_staff_required()
+RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+DECLARE v BOOLEAN;
+DECLARE global_available BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM staff s
+    WHERE s.approval_status = 'approved'
+      AND (s.suspended_until IS NULL OR s.suspended_until <= NOW())
+      AND NOT EXISTS (SELECT 1 FROM staff_assignment sa WHERE sa.staff_id = s.staff_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW()))
+  ) INTO global_available;
+
+  IF global_available THEN
+    RETURN FALSE;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM doctor d
+    LEFT JOIN department dep ON dep.department_id = d.department_id
+    WHERE d.approval_status = 'approved'
+      AND (d.suspended_until IS NULL OR d.suspended_until <= NOW())
+      AND (dep.status IS NULL OR dep.status = 'active')
+      AND NOT EXISTS (
+        SELECT 1 FROM staff_assignment sa
+        WHERE sa.doctor_id = d.doctor_id AND sa.status = 'ACTIVE' AND (sa.end_date IS NULL OR sa.end_date > NOW())
+      )
+  ) INTO v;
+  RETURN v;
+END;
+$$;
