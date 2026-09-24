@@ -199,6 +199,23 @@ const getAdminProfile = async (req, res) => {
 
 
 // =====================================================
+// PUBLIC CONTACT — only email, for Home emergency section
+// =====================================================
+
+const getAdminPublicContact = async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT email FROM admin ORDER BY admin_id ASC LIMIT 1`);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Admin contact not found." });
+    }
+    return res.status(200).json({ email: result.rows[0].email });
+  } catch (error) {
+    return res.status(500).json({ message: "Could not fetch admin contact.", error: error.message });
+  }
+};
+
+
+// =====================================================
 // DASHBOARD STATISTICS
 // =====================================================
 
@@ -1335,6 +1352,7 @@ module.exports = {
   getAdminRegistrationStatus,
 
   getAdminProfile,
+  getAdminPublicContact,
   getDashboardStats,
 
   getPendingDoctors,

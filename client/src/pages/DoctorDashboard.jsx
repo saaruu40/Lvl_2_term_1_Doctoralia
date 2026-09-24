@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import useInactivityLogout from "../hooks/useInactivityLogout";
 
 import "../styles/DoctorDashboard.css";
 
@@ -448,6 +449,19 @@ setMessageType("error"); }
     });
   };
 
+
+  // auto logout on inactivity (15 min) — frontend UX, backend JWT 1d still authoritative
+  const handleInactivityLogout = useCallback(() => {
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    localStorage.setItem("inactive_logout", "1");
+    navigate("/doctor-login", { replace: true });
+    window.location.replace("/doctor-login");
+  }, [navigate]);
+  useInactivityLogout(handleInactivityLogout, 5 * 60 * 1000);
 
   // =====================================================
   // CHECK LOGIN
@@ -1595,22 +1609,13 @@ setMessageType("error"); }
   // =====================================================
 
   const logout = () => {
-
-    localStorage.removeItem(
-      "doctor"
-    );
-
-    localStorage.removeItem(
-      "token"
-    );
-
-
-    navigate(
-      "/doctor-login",
-      {
-        replace: true,
-      }
-    );
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    navigate("/doctor-login", { replace: true });
+    window.location.replace("/doctor-login");
   };
 
 
@@ -1748,6 +1753,10 @@ setMessageType("error"); }
             {messageType === "error" ? "✕ " : "✓ "}
             {message}
           </div>
+        )}
+
+        {doctor?.department_status === 'inactive' && (
+          <p style={{ background:'#fef2f2', border:'1px solid #fecaca', padding:'10px', borderRadius:'6px', color:'#991b1b' }}>Your department is currently disabled.</p>
         )}
 
 
@@ -2128,11 +2137,11 @@ setMessageType("error"); }
           <section>
             <h1>My Schedules</h1>
             <p style={{ background: "#fffbeb", border: "1px solid #fcd34d", padding: "12px", borderRadius: "8px" }}>
-              <strong>Rule:</strong> You can set tomorrow&apos;s schedule only between <strong>12:55 PM and 6:00 PM (Asia/Dhaka)</strong>.
+              <strong>Rule (TESTING):</strong> You can set schedule for <strong>today through Dec 31</strong> only between <strong>1:30 AM and 12:00 PM (Asia/Dhaka)</strong>.
               {windowInfo ? (
                 <>
                   <br />
-                  Current: {windowInfo.currentDate} {windowInfo.currentTime} | Target (tomorrow): <strong>{windowInfo.targetDate}</strong> | Status:{" "}
+                  Current: {windowInfo.currentDate} {windowInfo.currentTime} | Today: <strong>{windowInfo.currentDate}</strong> | Status:{" "}
                   {windowInfo.isOpen ? <span style={{ color: "green", fontWeight: "bold" }}>OPEN - you can manage</span> : <span style={{ color: "red", fontWeight: "bold" }}>CLOSED</span>}
                   <br />
                   <small>{windowInfo.message}</small>
@@ -2144,13 +2153,13 @@ setMessageType("error"); }
 
             {!windowInfo?.isOpen && (
               <p style={{ color: "#b45309", background: "#fef3c7", padding: "10px", borderRadius: "6px" }}>
-                Schedule management is currently closed (window is <strong>12:55 PM – 6:00 PM inclusive Asia/Dhaka</strong>). You can view schedules but cannot create/edit/delete. Tomorrow&apos;s (<strong>{windowInfo?.targetDate}</strong>) slots are shown as <strong>UNAVAILABLE</strong> until next window opens at 12:55 PM.
+                Schedule management is currently closed (window is <strong>1:30 AM – 12:00 PM inclusive Asia/Dhaka</strong>). You can view schedules but cannot create/edit/delete. Today&apos;s (<strong>{windowInfo?.currentDate}</strong>) slots are shown as <strong>UNAVAILABLE</strong> until next window opens at 1:30 AM.
               </p>
             )}
 
             {/* ================= SCHEDULE LIST DROPDOWN — Next-day to year-end, 4 columns only ================= */}
             <div style={{ background: "white", padding: "16px", borderRadius: "12px", marginTop: "15px", boxShadow: "0 4px 14px rgba(0,0,0,0.07)", border: "1px solid #e5e7eb" }}>
-              <label style={{ fontWeight: 700, color: "#0f766e" }}>Schedule List — Date | start | end | hospital <small style={{ fontWeight: 400, color: "#6b7280" }}>(your schedules from tomorrow to Dec 31)</small></label>
+              <label style={{ fontWeight: 700, color: "#0f766e" }}>Schedule List — Date | start | end | hospital <small style={{ fontWeight: 400, color: "#6b7280" }}>(your schedules from today to Dec 31)</small></label>
               <br />
               <select value={selectedScheduleId} onChange={handleScheduleDropdownChange} style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "360px", marginTop: "8px" }}>
                 <option value="">-- Select Schedule --</option>
@@ -2164,8 +2173,8 @@ setMessageType("error"); }
                   );
                 })}
               </select>
-              {schedules.length === 0 && <small style={{ marginLeft: "10px", color: "#6b7280" }}>No schedules yet — create one when window is open (12:55 PM–6:00 PM).</small>}
-              <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "6px" }}>Dropdown shows only your schedules from tomorrow through Dec 31. Pick one to fix/edit below.</p>
+              {schedules.length === 0 && <small style={{ marginLeft: "10px", color: "#6b7280" }}>No schedules yet — create one when window is open (1:30 AM–12:00 PM).</small>}
+              <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "6px" }}>Dropdown shows only your schedules from today through Dec 31. Pick one to fix/edit below.</p>
             </div>
 
             {/* Fix/Edit form for the SELECTED schedule — Date | start | end | hospital only */}
@@ -2175,7 +2184,7 @@ setMessageType("error"); }
                 <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "end" }}>
                   <div>
                     <label>Date *</label><br />
-                    <input type="date" value={editForm.available_date} onChange={(e)=>setEditForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.targetDate || ""} max={`${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }} />
+                    <input type="date" value={editForm.available_date} onChange={(e)=>setEditForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.currentDate || windowInfo?.targetDate || ""} max={`${(windowInfo?.currentDate||windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px" }} />
                   </div>
                   <div>
                     <label>Start Time * <small style={{ color: "#6b7280" }}>(24h)</small></label><br />
@@ -2206,23 +2215,23 @@ setMessageType("error"); }
                       {hospitals.map(h=>(<option key={h.hospital_id} value={h.hospital_id}>{h.hospital_name} - {h.city}</option>))}
                     </select>
                   </div>
-                  <button onClick={() => submitEditSchedule(editingScheduleId)} disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Fix/Edit allowed only 12:55 PM - 6:00 PM (Asia/Dhaka)" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
+                  <button onClick={() => submitEditSchedule(editingScheduleId)} disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Fix/Edit allowed only 1:30 AM - 12:00 PM (Asia/Dhaka)" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
                     {windowInfo?.isOpen ? "Fix/Edit Schedule" : "Window Closed"}
                   </button>
                   <button onClick={clearScheduleSelection} style={{ padding: "11px 14px", background: "#e5e7eb", border: "none", borderRadius: "7px", cursor: "pointer" }}>Clear</button>
                 </div>
-                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "8px" }}>Fix for any date from tomorrow through Dec 31 same year. Window 12:55 PM–6:00 PM applies to this action only.</p>
+                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "8px" }}>Fix for any date from today through Dec 31 same year. Window 1:30 AM–12:00 PM applies to this action only.</p>
               </div>
             )}
 
             <div style={{ background: "white", padding: "20px", borderRadius: "12px", marginTop: "15px", boxShadow: "0 4px 14px rgba(0,0,0,0.07)" }}>
-              <h3>Create Slot — any date from tomorrow through Dec 31 same year</h3>
+              <h3>Create Slot — any date from today through Dec 31 same year</h3>
               <form onSubmit={createSchedule} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "end" }}>
                 <div style={{ position: "relative" }}>
-                  <label>Date * <small style={{ color: "#6b7280" }}>— tomorrow to Dec 31</small></label>
+                  <label>Date * <small style={{ color: "#6b7280" }}>— today to Dec 31</small></label>
                   <br />
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <input type="date" value={scheduleForm.available_date} onChange={(e)=>setScheduleForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.targetDate || ""} max={`${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "160px" }} />
+                    <input type="date" value={scheduleForm.available_date} onChange={(e)=>setScheduleForm(prev=>({...prev, available_date: e.target.value}))} min={windowInfo?.currentDate || windowInfo?.targetDate || ""} max={`${(windowInfo?.currentDate||windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`} required style={{ padding: "10px", border: "1px solid #d1d5db", borderRadius: "6px", minWidth: "160px" }} />
                     <button type="button" aria-label="View schedules" aria-expanded={showNextDayDropdown} onClick={() => setShowNextDayDropdown((v) => !v)} title={showNextDayDropdown ? "Hide schedules" : "Show schedules (Date | start | end | hospital)"} style={{ padding: "10px 11px", border: "1px solid #0f766e", borderRadius: "7px", background: showNextDayDropdown ? "#0f766e" : "#fff", color: showNextDayDropdown ? "#fff" : "#0f766e", cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>
                       📅 ▾
                     </button>
@@ -2234,7 +2243,7 @@ setMessageType("error"); }
                         <button type="button" onClick={() => setShowNextDayDropdown(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#6b7280" }}>✕</button>
                       </div>
                       {schedules.length === 0 ? (
-                        <p style={{ padding: "14px", color: "#6b7280", margin: 0 }}>No schedules yet. Create one for any date from tomorrow to Dec 31 (window 12:55 PM–6:00 PM).</p>
+                        <p style={{ padding: "14px", color: "#6b7280", margin: 0 }}>No schedules yet. Create one for any date from today to Dec 31 (window 1:30 AM–12:00 PM).</p>
                       ) : (
                         schedules.map((s) => {
                           const dateStr = String(s.available_date).split("T")[0];
@@ -2290,7 +2299,7 @@ setMessageType("error"); }
                     {hospitals.map(h=>(<option key={h.hospital_id} value={h.hospital_id}>{h.hospital_name} - {h.city}</option>))}
                   </select>
                 </div>
-                <button type="submit" disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Allowed only 12:55 PM - 6:00 PM" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
+                <button type="submit" disabled={!windowInfo?.isOpen} title={!windowInfo?.isOpen ? "Allowed only 1:30 AM - 12:00 PM" : undefined} style={{ padding: "11px 18px", background: windowInfo?.isOpen ? "#0f766e" : "#9ca3af", color: "white", border: "none", borderRadius: "7px", cursor: windowInfo?.isOpen ? "pointer" : "not-allowed", fontWeight: "600" }}>
                   {windowInfo?.isOpen ? "Add Slot" : "Closed"}
                 </button>
               </form>
@@ -2298,10 +2307,10 @@ setMessageType("error"); }
             </div>
 
             {(() => {
-              const yearEnd = `${(windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`;
+              const yearEnd = `${(windowInfo?.currentDate||windowInfo?.targetDate||String(new Date().getFullYear())+"-12-31").split("-")[0]}-12-31`;
               return (
                 <>
-                  <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "16px" }}>Use the <strong>📅 ▾</strong> icon next to the fixing date or the dropdown above to view your schedule list (Date | start | end | hospital) — same year from tomorrow to {yearEnd}. Window 12:55 PM–6:00 PM applies when fixing. Hospital is required.</p>
+                  <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "16px" }}>Use the <strong>📅 ▾</strong> icon next to the fixing date or the dropdown above to view your schedule list (Date | start | end | hospital) — same year from today to {yearEnd}. Window 1:30 AM–12:00 PM applies when fixing. Hospital is required.</p>
                   {/* Minimal 4-column preview removed — dropdown above is the schedule list. No other UI shown. */}
                 </>
               );

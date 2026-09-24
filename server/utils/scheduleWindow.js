@@ -1,10 +1,10 @@
 // Central helper for Doctor schedule management window
-// Fixing window: 12:55 PM (12:55) through 18:00 (6:00 PM) inclusive — Asia/Dhaka
-// Fixable dates: any date from tomorrow through Dec 31 of same Dhaka year (next day -> year end)
+// TEMP TESTING: window 1:30 AM through 12:00 PM inclusive — Asia/Dhaka
+// Fixable dates: any date from today through Dec 31 of same Dhaka year (today -> year end)
 
 const TIMEZONE = process.env.TIMEZONE || "Asia/Dhaka";
-const WINDOW_START_MIN = 12 * 60 + 55;    // 12:55 PM = 775
-const WINDOW_END_MIN = 18 * 60;    // 18:00 = 1080
+const WINDOW_START_MIN = 1 * 60 + 30;    // 1:30 AM = 90
+const WINDOW_END_MIN = 12 * 60;    // 12:00 PM = 720
 
 function getNowInTimezone(date = new Date()) {
   // Convert to target timezone and extract wall-time components
@@ -85,20 +85,20 @@ function getScheduleWindowStatus(now = new Date()) {
     timezone: TIMEZONE,
     currentDate,
     targetDate,
-    window: "12:55-18:00",
+    window: "01:30-12:00",
     isOpen,
     currentTime: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
     minutes,
     message: isOpen
-      ? `You can set tomorrow's schedule only between 12:55 PM and 6:00 PM. Target: ${targetDate}`
-      : "Doctor schedules for the following day can only be managed between 12:55 PM and 6:00 PM.",
+      ? `You can set schedule for today through Dec 31 between 1:30 AM and 12:00 PM. Today: ${currentDate}`
+      : "Doctor schedules can only be managed between 1:30 AM and 12:00 PM.",
   };
 }
 
 function assertScheduleWindow(now = new Date()) {
   if (!isWithinScheduleWindow(now)) {
     const status = getScheduleWindowStatus(now);
-    const err = new Error("Doctor schedules for the following day can only be managed between 12:55 PM and 6:00 PM.");
+    const err = new Error("Doctor schedules can only be managed between 1:30 AM and 12:00 PM.");
     err.status = 403;
     err.code = "WINDOW_CLOSED";
     err.details = status;
@@ -123,16 +123,16 @@ function assertTargetDate(submittedDateStr, now = new Date()) {
   }
 }
 
-// Same-year range: any date from tomorrow through Dec 31 of same Dhaka year (for current request)
+// TEMP TESTING: Same-year range: any date from today through Dec 31 of same Dhaka year
 function assertTargetDateInSameYear(submittedDateStr, now = new Date()) {
-  const tomorrow = getTargetDateStr(now);
+  const today = getCurrentDateStr(now);
   const yearEnd = getYearEndDateStr(now);
   const { year } = getNowInTimezone(now);
   const submitted = String(submittedDateStr || "").split("T")[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(submitted)) {
     const err = new Error(`Schedule date must be YYYY-MM-DD within current year (${year}). You sent ${submitted || "empty"}.`);
     err.status = 400;
-    err.details = { expected: `${tomorrow} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
+    err.details = { expected: `${today} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
     throw err;
   }
   const submittedYear = Number(submitted.split("-")[0]);
@@ -142,16 +142,16 @@ function assertTargetDateInSameYear(submittedDateStr, now = new Date()) {
     err.details = { expectedYear: year, received: submitted, ...getScheduleWindowStatus(now) };
     throw err;
   }
-  if (submitted < tomorrow) {
-    const err = new Error(`Schedule date must be from tomorrow (${tomorrow}) onward. You sent ${submitted}.`);
+  if (submitted < today) {
+    const err = new Error(`Schedule date must be from today (${today}) onward. You sent ${submitted}.`);
     err.status = 400;
-    err.details = { expected: `${tomorrow} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
+    err.details = { expected: `${today} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
     throw err;
   }
   if (submitted > yearEnd) {
     const err = new Error(`Schedule date must be within current year (≤ ${yearEnd}). You sent ${submitted}.`);
     err.status = 400;
-    err.details = { expected: `${tomorrow} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
+    err.details = { expected: `${today} .. ${yearEnd}`, received: submitted, ...getScheduleWindowStatus(now) };
     throw err;
   }
 }

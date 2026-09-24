@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import useInactivityLogout from "../hooks/useInactivityLogout";
 
 import "../styles/StaffDashboard.css";
 
@@ -39,10 +40,25 @@ function StaffDashboard() {
   });
 
   const logout = () => {
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
     localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
     localStorage.removeItem("token");
     navigate("/staff-login", { replace: true });
+    window.location.replace("/staff-login");
   };
+
+  const handleInactivityLogout = useCallback(() => {
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    localStorage.setItem("inactive_logout", "1");
+    window.location.replace("/staff-login");
+  }, []);
+  useInactivityLogout(handleInactivityLogout, 5 * 60 * 1000);
 
   const authFetch = async (url, options = {}) => {
     const token = localStorage.getItem("token");

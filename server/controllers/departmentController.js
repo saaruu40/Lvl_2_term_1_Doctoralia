@@ -1,13 +1,13 @@
 const pool = require("../config/db");
 
-// GET all departments (supports ?search= for Admin search bar)
+// GET all departments — PUBLIC: only active departments (for Doctor Registration dropdown)
 const getDepartments = async (req, res) => {
   try {
     const { search } = req.query;
-    let query = `SELECT department_id, department_name, description,status FROM department`;
+    let query = `SELECT department_id, department_name, description, status FROM department WHERE (status = 'active' OR status IS NULL)`;
     const values = [];
     if (search && search.trim()) {
-      query += ` WHERE LOWER(department_name) LIKE LOWER($1)`;
+      query += ` AND LOWER(department_name) LIKE LOWER($1)`;
       values.push(`%${search.trim()}%`);
     }
     query += ` ORDER BY department_id`;

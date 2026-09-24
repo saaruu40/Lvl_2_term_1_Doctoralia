@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "../styles/PatientDashboard.css";
+import useInactivityLogout from "../hooks/useInactivityLogout";
 
 const API =
   "http://localhost:5000/api/patients";
@@ -826,17 +827,30 @@ const loadReferrals = async () => {
     };
 
 
+  // auto logout on inactivity (15 min) — frontend UX, backend JWT 1d still authoritative
+  const handleInactivityLogout = useCallback(() => {
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
+    localStorage.removeItem("token");
+    localStorage.setItem("inactive_logout", "1");
+    window.location.replace("/patient-login");
+  }, []);
+  useInactivityLogout(handleInactivityLogout, 5 * 60 * 1000);
+
   // ======================================
   // LOGOUT
   // ======================================
 
   const logout = () => {
-
-    localStorage.removeItem(
-      "patient"
-    );
+    localStorage.removeItem("admin");
+    localStorage.removeItem("doctor");
+    localStorage.removeItem("staff");
+    localStorage.removeItem("patient");
     localStorage.removeItem("token");
     navigate("/patient-login");
+    window.location.replace("/patient-login");
   };
 
 

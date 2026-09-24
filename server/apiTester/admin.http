@@ -1,0 +1,247 @@
+# =============================================================================
+# Admin — All Operations — Doctoralia
+# =============================================================================
+# Base: http://localhost:5000
+# Routes: server/routes/adminRoutes.js + server/controllers/adminController.js
+#         + server/routes/departmentRoutes.js (admin writes) + server/routes/complaintRoutes.js
+# Auth: JWT Bearer — server/middleware/authMiddleware.js + roleMiddleware.js ("admin")
+# Token payload: { admin_id, role:"admin" } expiresIn 1d, JWT_SECRET in server/.env
+#
+# HOW TO USE:
+#  1. Run POST /api/admin/login (1.3) → copy token from response
+#  2. Paste into @adminToken below (or use # @name adminLogin → {{adminLogin.response.body.token}})
+#  3. Every 🔒 block below already sends Authorization: Bearer {{adminToken}}
+# =============================================================================
+
+@baseUrl = http://localhost:5000
+@adminToken = PASTE_ADMIN_JWT_HERE
+
+# -------------------------------------------------------------------------
+# 0. Health (infra — public) — server/server.js:48,54
+# -------------------------------------------------------------------------
+
+### 0.1 Root — public
+GET {{baseUrl}}/
+
+### 0.2 Test DB — public
+GET {{baseUrl}}/api/test-db
+
+# -------------------------------------------------------------------------
+# 1. Admin Auth — public
+# -------------------------------------------------------------------------
+
+### 1.1 Admin — Check registration status — public — GET /api/admin/status
+# Always public, singleton guard. Expected 200: { closed, count, message }
+GET {{baseUrl}}/api/admin/status
+
+### 1.1b Admin — Public contact — public — GET /api/admin/public-contact — only email, for Home emergency
+# Public, no token, no phone/password/JWT. Expected 200: { email: "sara@gmail.com" }
+GET {{baseUrl}}/api/admin/public-contact
+
+### 1.2 Admin — Register — public — POST /api/admin/register — singleton (403 after first admin)
+# Expected 201: { admin } | 403 closed | 409 dup email
+POST {{baseUrl}}/api/admin/register
+Content-Type: application/json
+
+{
+  "full_name": "Sara Admin",
+  "email": "sara@gmail.com",
+  "password": "sara123",
+  "phone_number": "01700000000"
+}
+
+### 1.3 Admin — Login — public — POST /api/admin/login — ⭐ RETURNS TOKEN
+# Alias "sara" -> "sara@gmail.com", lowercased+trimmed. Returns { token, admin }
+# @name adminLogin
+POST {{baseUrl}}/api/admin/login
+Content-Type: application/json
+
+{
+  "email": "sara@gmail.com",
+  "password": "sara123"
+}
+
+# -------------------------------------------------------------------------
+# 2. Admin — Profile & Dashboard — 🔒 admin
+# -------------------------------------------------------------------------
+
+### 2.1 Get profile — 🔒 admin — GET /api/admin/profile/:id
+GET {{baseUrl}}/api/admin/profile/1
+Authorization: Bearer {{adminToken}}
+
+### 2.2 Dashboard stats — 🔒 admin — GET /api/admin/dashboard/stats
+# Counts: pendingDoctors, pendingStaff, approvedDoctors, departments
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+# -------------------------------------------------------------------------
+# 3. Admin — Doctor Approval — 🔒 admin
+# -------------------------------------------------------------------------
+
+### 3.1 Pending doctors — 🔒 admin — GET /api/admin/doctors/pending
+GET {{baseUrl}}/api/admin/doctors/pending
+Authorization: Bearer {{adminToken}}
+
+### 3.2 Approve doctor — 🔒 admin — PATCH /api/admin/doctors/:id/approve — uses req.user.admin_id
+PATCH {{baseUrl}}/api/admin/doctors/1/approve
+Authorization: Bearer {{adminToken}}
+
+### 3.3 Reject doctor — 🔒 admin — PATCH /api/admin/doctors/:id/reject
+PATCH {{baseUrl}}/api/admin/doctors/2/reject
+Authorization: Bearer {{adminToken}}
+
+### 3.4 Doctor decision history — 🔒 admin — GET /api/admin/history/doctors/:adminId
+GET {{baseUrl}}/api/admin/history/doctors/1
+Authorization: Bearer {{adminToken}}
+
+# -------------------------------------------------------------------------
+# 4. Admin — Staff Approval — 🔒 admin
+# -------------------------------------------------------------------------
+
+### 4.1 Pending staff — 🔒 admin — GET /api/admin/staff/pending
+GET {{baseUrl}}/api/admin/staff/pending
+Authorization: Bearer {{adminToken}}
+
+### 4.2 Approve staff — 🔒 admin — PATCH /api/admin/staff/:id/approve
+PATCH {{baseUrl}}/api/admin/staff/1/approve
+Authorization: Bearer {{adminToken}}
+
+### 4.3 Reject staff — 🔒 admin — PATCH /api/admin/staff/:id/reject
+PATCH {{baseUrl}}/api/admin/staff/2/reject
+Authorization: Bearer {{adminToken}}
+
+### 4.4 Approved staff (with assignment info) — 🔒 admin — GET /api/admin/staff/approved
+GET {{baseUrl}}/api/admin/staff/approved
+Authorization: Bearer {{adminToken}}
+
+### 4.5 Suspended staff — 🔒 admin — GET /api/admin/staff/suspended
+GET {{baseUrl}}/api/admin/staff/suspended
+Authorization: Bearer {{adminToken}}
+
+### 4.6 Available staff — 🔒 admin — GET /api/admin/staff/available
+GET {{baseUrl}}/api/admin/staff/available
+Authorization: Bearer {{adminToken}}
+
+### 4.7 Staff decision history — 🔒 admin — GET /api/admin/history/staff/:adminId
+GET {{baseUrl}}/api/admin/history/staff/1
+Authorization: Bearer {{adminToken}}
+
+# -------------------------------------------------------------------------
+# 5. Admin — Departments — 🔒 admin (public reads in common/patient/doctor files)
+# -------------------------------------------------------------------------
+
+### 5.1 List departments (admin-scoped, shows all incl. inactive) — 🔒 admin — GET /api/admin/departments?search=
+GET {{baseUrl}}/api/admin/departments
+Authorization: Bearer {{adminToken}}
+
+### 5.2 Search departments — 🔒 admin
+GET {{baseUrl}}/api/admin/departments?search=Neuro
+Authorization: Bearer {{adminToken}}
+
+### 5.3 Add department — 🔒 admin — POST /api/admin/departments — 409 dup
+POST {{baseUrl}}/api/admin/departments
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Oncology",
+  "description": "Cancer diagnosis and treatment"
+}
+
+### 5.4 Update department — 🔒 admin — PUT /api/admin/departments/:id
+PUT {{baseUrl}}/api/admin/departments/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Cardiology - Admin Update",
+  "description": "Heart care — updated via admin route"
+}
+
+### 5.5 Public department writes (also via /api/departments — admin writes) — 🔒 admin
+POST {{baseUrl}}/api/departments
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Nephrology",
+  "description": "Kidney and renal system disorders"
+}
+
+### 5.6 Update via public route — 🔒 admin — PUT /api/departments/:id
+PUT {{baseUrl}}/api/departments/1
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "department_name": "Cardiology Updated",
+  "description": "Heart and cardiovascular system - updated"
+}
+
+### 5.7 Delete department — 🔒 admin — DELETE /api/departments/:id — 409 if doctors assigned
+DELETE {{baseUrl}}/api/departments/5
+Authorization: Bearer {{adminToken}}
+
+### 5.8 Disable department — ⚠️ currently public (anomaly server/routes/adminRoutes.js:103) — PUT /api/admin/departments/:id/disable
+# Expected to become 🔒 admin; currently works without token but send it anyway
+PUT {{baseUrl}}/api/admin/departments/1/disable
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{}
+
+### 5.9 Enable department — ⚠️ currently public — PUT /api/admin/departments/:id/enable
+PUT {{baseUrl}}/api/admin/departments/1/enable
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{}
+
+# -------------------------------------------------------------------------
+# 6. Admin — Complaints — 🔒 admin
+# -------------------------------------------------------------------------
+
+### 6.1 All complaints — 🔒 admin — GET /api/admin/complaints — pending first
+GET {{baseUrl}}/api/admin/complaints
+Authorization: Bearer {{adminToken}}
+
+### 6.2 Suspend user from complaint (5 days) — 🔒 admin — PATCH /api/admin/complaints/:id/suspend
+PATCH {{baseUrl}}/api/admin/complaints/1/suspend
+Authorization: Bearer {{adminToken}}
+
+### 6.3 Dismiss complaint — 🔒 admin — PATCH /api/admin/complaints/:id/dismiss
+PATCH {{baseUrl}}/api/admin/complaints/1/dismiss
+Authorization: Bearer {{adminToken}}
+
+# -------------------------------------------------------------------------
+# 7. Notifications (admin view) — public (should be 🔒) — server/routes/notificationRoutes.js
+# -------------------------------------------------------------------------
+
+### 7.1 Admin notifications — GET /api/notifications/admin/:id
+GET {{baseUrl}}/api/notifications/admin/1
+Authorization: Bearer {{adminToken}}
+
+# -------------------------------------------------------------------------
+# Learn (public) — included in admin file for completeness; also in standalone learn.http
+# -------------------------------------------------------------------------
+
+### 8.1 Health — public — GET /api/learn/health
+GET {{baseUrl}}/api/learn/health
+
+# =============================================================================
+# 9. Frontend Auth (no API � JWT reuse, 1d expiry unchanged) � manual verify
+# =============================================================================
+# Auto logout 5m: client/src/hooks/useInactivityLogout.js used in AdminDashboard.jsx:18.
+#  Manual: login via 1.3 ? visit /admin-dashboard ? idle 5m (or temporarily 10s) ? token+admin cleared, localStorage inactive_logout=1, redirect to /login ? login page shows "You have been logged out due to inactivity." (AdminLogin.jsx:13).
+#  Backend still enforces 401: try without token ? should get 401.
+# Already logged in: while logged in as any role ? visit /login ? expect "You are already logged in. Please logout first." + Logout button (AdminLogin.jsx:13 early return), no form. After Logout ? form renders.
+# Protected route: without token ? visit /admin-dashboard ? ProtectedRoute.jsx redirects to /login; with doctor token ? visit /admin-dashboard ? redirect to /doctor-login (wrong role).
+
+### 9.1 Smoke 401 without token � should be 401 No token provided (authMiddleware.js:8)
+GET {{baseUrl}}/api/admin/dashboard/stats
+# No Authorization header � expect 401
+
+### 9.2 Smoke 401 with bad token � should be 401 Invalid or expired token (authMiddleware.js:31)
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer bad.token.here
+

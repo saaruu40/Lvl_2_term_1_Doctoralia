@@ -62,3 +62,158 @@ Implemented doctor-owned schedule management with strict 00:01-03:00 window for 
 - No new libraries (Agent.md rule)
 - Existing files not removed
 - Timezone configurable via TIMEZONE env
+
+---
+
+# FILE REVIEWS - Authentication Improvements (Inactivity Logout + Already Logged In + Protected Routes)
+
+## Date: 2026-09-24
+
+## Summary
+Implemented 3 frontend auth features reusing existing JWT (`jsonwebtoken 9.0.3`, `expiresIn 1d`, `JWT_SECRET` `server/.env:8`) without new libraries, without deleting files, without breaking existing auth. Backend JWT `authMiddleware.js:24` + `roleMiddleware.js:3` remains authoritative; frontend adds UX guards.
+
+## Frontend - New Files
+- **client/src/hooks/useInactivityLogout.js** (NEW, 45 lines)
+  - Average-coder hook, no lib. Params: `onLogout, timeoutMs=5*60*1000` (was 15 min, now 5 min per request).
+  - Events: `mousemove,mousedown,click,keydown,scroll,touchstart` (throttled 3s for mousemove). Logic: `let timer; reset=()=>{clearTimeout(timer); timer=setTimeout(onLogout, timeoutMs)}` + `addEventListener` each event → reset, `removeEventListener+clearTimeout` on cleanup. Called with `useCallback` logout that clears storage + sets `inactive_logout=1` + redirects.
+- **client/src/components/ProtectedRoute.jsx** (NEW, 34 lines)
+  - Simple wrapper for `BrowserRouter`. Checks `localStorage token` + `admin|doctor|staff|patient` presence. If missing → `<Navigate to={roleLogin} replace>`; if `allowedRoles` mismatch → redirect to own login. Keeps public pages unwrapped.
+
+## Frontend - Modified
+- **client/src/App.jsx:1,83,151,169,187,205**
+  - Added `import ProtectedRoute`. Wrapped 4 dashboards: `"/admin-dashboard" allowed ["admin"]`, `"/doctor-dashboard" ["doctor"]`, `"/staff-dashboard" ["staff"]`, `"/patient-dashboard" ["patient"]`. Public routes (`/`, `/login`, `/doctor-registration`, `/staff-registration`, `/patient-registration`, etc.) left unwrapped. No new route added.
+- **client/src/pages/AdminLogin.jsx:1,13,74,76**
+  - Added `useEffect` for `inactive_logout` banner, `alreadyLoggedIn` check (`token && (admin||doctor||staff||patient)`), early return showing `"You are already logged in. Please logout first."` + `Logout` button (`removeItem all + reload`). Normal login still `POST /api/admin/login` → `setItem token+admin` → `navigate("/admin-dashboard")`.
+- **client/src/pages/DoctorLogin.jsx:1,15,74,76** — same guard + banner + logout (shared token check), normal flow `POST /api/doctors/login` unchanged.
+- **client/src/pages/PatientLogin.jsx:1,15,74,76** — same.
+- **client/src/pages/StaffLogin.jsx:1,15,74,76** — same.
+- **client/src/pages/AdminDashboard.jsx:1,18,672,680**
+  - Added `import useInactivityLogout`, `useCallback`. Added `handleInactivityLogout` (`remove all roles+token, set inactive_logout=1, replace /login`) + `useInactivityLogout(handleInactivityLogout, 5*60*1000)` (5 min) after `storedAdmin` def. Expanded `logout()` to clear all roles (prevent stale shared token).
+- **client/src/pages/DoctorDashboard.jsx:1,5,452,1611**
+  - Added hook + `handleInactivityLogout` → `/doctor-login` (both `navigate` + `replace`), expanded `logout()` to clear all. Timeout now `5*60*1000` (5 min).
+- **client/src/pages/StaffDashboard.jsx:1,4,42,51**
+  - Added hook + `handleInactivityLogout` → `/staff-login`, expanded `logout()`. Timeout `5*60*1000`.
+- **client/src/pages/PatientDashboard.jsx:1,5,833,843**
+  - Added hook + `handleInactivityLogout` → `/patient-login`, expanded `logout()`. Timeout `5*60*1000`.
+
+## Backend - Unchanged (preserved)
+- `server/middleware/authMiddleware.js:5,16,24,31` — still `Bearer` + `jwt.verify` → 401.
+- `server/middleware/roleMiddleware.js:3` — still 403.
+- `server/controllers/*.js` `jwt.sign(..., expiresIn:"1d")` unchanged (`adminController.js:135`, `doctorController.js:310`, `patientController.js:183`, `staffController.js:336`).
+- No new triggers/functions/procedures, no new dependency, transactions `BEGIN/COMMIT/ROLLBACK` preserved.
+
+## Docs - Modified
+- **AUTH-SUMMARY.md:171-187 → added Frontend Auth Guards section** (inactivity 5 min, already-logged-in, ProtectedRoute, counts unchanged 100).
+- **LEARN_BACKEND.md** — added How Auth Works section (inactivity + already-logged-in + ProtectedRoute step-by-step).
+- **api-tests.http:1-33 header** — added separate role files index + Frontend Auth note (no new endpoint, manual verification).
+- **server/apiTester/admin.http, doctor.http, patient.http, staff.http** — appended comment block `=== Frontend Auth (no API) ===` with 401 smoke + manual steps.
+
+## Verification
+- `npm run build` passes (vite build)
+- Manual: login → wait 5m (or temporarily 10s for test) → assert `inactive_logout` banner + redirect; while logged in → visit any `/...-login` → assert block + Logout → form; without token → visit `/admin-dashboard` → redirect to `/login`; booking without auth still requires `patient` storage + backend validates.
+
+---
+
+# FILE REVIEWS - Doctor Department Disabled Message (2026-09-24)
+
+## Summary
+Show `"Your department is currently disabled."` on Doctor Dashboard only when assigned department `status='inactive'`. Minimal change reusing existing `department.status`.
+
+## Backend - Modified
+- **server/controllers/doctorController.js:466-468** `getDoctorProfile` — added `dep.status AS department_status` to `SELECT` of existing `LEFT JOIN department` query. Reuses `department.status` (`database/schema.sql:18` `active`/`inactive`, `adminController.js:812 disable → inactive, 851 enable → active`). `GET /api/doctors/profile` (`doctorRoutes.js:254` `auth+role doctor`) now returns `department_status`. No new route/table/trigger.
+
+## Frontend - Modified
+- **client/src/pages/DoctorDashboard.jsx:1758** — added `{doctor?.department_status === 'inactive' && <p style fef2f2/fecaca>Your department is currently disabled.</p>}` under main banner. Simple, no popup/modal/redirect/restriction. Enabled/`null` → nothing shown. Appointments/schedules/profile/auth untouched.
+
+## Not Changed
+- Appointments, schedules, profile, auth/JWT (`expiresIn 1d` unchanged), department disable/enable logic, payment (none), no new lib, no file deleted, no new trigger (reused `check_department_active_on_appointment` `schema.sql:750-777`).
+
+## Docs - Modified
+- **LATEST_CHANGES.md §9** brief entry
+- **server/apiTester/doctor.http §3.1a/3.1b** added
+- **LEARN_BACKEND.md** added Department Status section
+
+---
+
+# FILE REVIEWS - Home Page + DB Functions + Secure Booking (2026-09-24)
+
+## Summary
+Public Home at `/` with 8 sections, 2 DB functions + 1 procedure, secure booking via JWT `req.user.patient_id`, reuse existing triggers/`isSlotExpired`, simple UI, no payment/lib/file deletion.
+
+## Database - Modified
+- **database/schema.sql:777+** append:
+  - `get_doctors_without_staff()` `RETURNS TABLE` — `NOT EXISTS staff_assignment ACTIVE`, filters `approved`+`suspended_until`+`department active`, no `needs_staff` column/trigger.
+  - `calculate_appointment_fee(p_patient_id INT,p_doctor_id INT)` — `EXISTS completed 90d` → `followup_fee` else `new_patient_fee` (`doctor.new_patient_fee/followup_fee:89-90`).
+  - `book_appointment(p_patient_id,p_doctor_id,p_schedule_id,p_hospital_id, INOUT p_appointment_id)` `PROCEDURE` — validates doctor/dept/schedule/duplicate/capacity, `INSERT pending` — keeps `isSlotExpired` in Node.
+
+## Backend - Modified
+- **server/controllers/adminController.js:200+** add `getAdminPublicContact` (`SELECT email ... LIMIT 1`) + export, **server/routes/adminRoutes.js:6+** add `GET /public-contact` public (only email).
+- **server/controllers/patientController.js:1133+** add `getDoctorsWithoutStaff` (`SELECT * FROM get_doctors_without_staff()`), secure `createAppointment` (`patient_id=req.user.patient_id` 401 if no JWT, fee via `SELECT calculate_appointment_fee`) with `BEGIN/COMMIT/ROLLBACK` + `P0001` forward; export; **server/routes/patientRoutes.js:20+** import, add `GET /doctors/looking-for-staff` before `:id`, secure `POST /appointments` with `authMiddleware,role(patient)`.
+- No new trigger — reuse `trg_appointment_department_check:750-777`; no payment; transactions preserved.
+
+## Frontend - New
+- **client/src/components/HomeNavbar.jsx** (40 lines) — logo + Home|Doctors|Departments + Account ▾ (Patient/Doctor/Staff/Admin) with logout if logged in; not replacing `Header.jsx`.
+- **client/src/pages/Home.jsx** (120 lines) — 8 sections in order, fetches `departments` (`GET /api/departments`), `doctors` (`GET /api/patients/doctors?search&department_id`), `looking` (`GET /doctors/looking-for-staff`), `adminEmail` (`GET /admin/public-contact`), dept click scrolls to doctors, simple fetch, no lib.
+- **client/src/pages/DoctorProfile.jsx** (90 lines) — `/doctors/:id` via `GET /doctors/:id` + `GET /doctors/:id/schedules` (server `isSlotExpired` filtered), `Book Appointment` checks token → `POST /appointments` with `Bearer` and `doctor_id,schedule_id` only (patient_id from JWT), reuse scheduleWindow.
+- **client/src/styles/Home.css** (70 lines) — reuse `f5f7fb`, teal `075f68`, white cards, `grid auto-fill 250px`, no animation.
+
+## Frontend - Modified
+- **client/src/App.jsx:109+** import Home/DoctorProfile, add `Route "/" <Home/>`, `Route "/doctors/:id" <DoctorProfile/>`, `hideHeader` for `/` and `/doctors/*`, keep all auth routes.
+
+## Docs - Modified
+- **server/apiTester/admin.http** add `1.1b GET /public-contact`; **patient.http** add `2.12 doctors looking-for-staff` + secure `4.1/4.1b` booking with JWT; **LATEST_CHANGES.md §10**, **LEARN_BACKEND.md** Home flow.
+
+## Not Changed
+- No file deleted, no payment/Mock Gateway, no new lib, no duplicate schedule logic, existing `isSlotExpired`/`scheduleWindow` preserved, existing `Header.jsx` kept.
+
+---
+
+# FILE REVIEWS - Home Rebuild — Needs Staff Trigger + Nav-Only Booking (2026-09-24)
+
+## Summary
+Revised Home to use `needs_staff` trigger for newly approved doctors and make `Book Appointment` navigation-only (appointment out of scope). Kept `calculate_appointment_fee` (used by existing booking), dropped unused `book_appointment`.
+
+## Database - Modified
+- **database/schema.sql:840+** `DO $$ ALTER TABLE doctor ADD COLUMN needs_staff BOOLEAN DEFAULT FALSE`, `FUNCTION set_doctor_needs_staff()`, `TRIGGER trg_doctor_needs_staff BEFORE UPDATE OF approval_status WHEN pending→approved SET needs_staff TRUE`, `FUNCTION get_doctors_needing_staff() RETURNS TABLE WHERE needs_staff TRUE AND NOT EXISTS ACTIVE staff_assignment`, `DROP PROCEDURE book_appointment` (checked zero CALLs, keep `calculate_appointment_fee` because `patientController:591` uses it).
+
+## Backend - Modified
+- **server/controllers/patientController.js:1142** `getDoctorsWithoutStaff` now `SELECT * FROM get_doctors_needing_staff()` (fallback to old if not migrated), endpoint path unchanged `/looking-for-staff` public.
+- `POST /appointments` kept secured (`auth+role patient`, `req.user.patient_id`) but not called from Home.
+
+## Frontend - Modified
+- **client/src/pages/Home.jsx** staff section → `New Doctors Looking for Staff` + `New doctors have recently joined...` + card `New Doctor`/`Staff Required` + `Register as Staff → /staff-registration`; add searchable doctor dropdown `Search or Select Doctor ▼` with `All Doctors` + filtered `Dr. name` on typing `rah`, dept filter works together.
+- **client/src/pages/DoctorProfile.jsx:24** `book` now `const isPatient=!!token&&!!patient → navigate /patient-login else /patient-dashboard`, no `fetch POST`, no `patient_id`.
+
+## Docs - Modified
+- **server/apiTester/patient.http 2.12** comment to `get_doctors_needing_staff`+trigger, **LATEST_CHANGES.md §11**, **LEARN_BACKEND.md** Home Rebuild.
+
+## Not Changed
+- No file deleted, no appointment backend modified for Home task beyond staff query, no new appointment procedure/fee, no payment, no new lib, `isSlotExpired` untouched.
+
+---
+
+# FILE REVIEWS - Generic Staff Required Advertisement (2026-09-24)
+
+## Summary
+Fixed false advertisement caused by blind `pending→approved → needs_staff TRUE` trigger. Home now shows generic boolean banner only when true shortage exists (approved doctor with NO ACTIVE staff). No doctor details leaked.
+
+## Database - Modified
+- **database/schema.sql:928-1030** — `set_doctor_needs_staff()` now checks `NOT EXISTS ACTIVE` before setting TRUE else FALSE (prevents false ad when staff already available) + backfill `UPDATE doctor SET needs_staff` corrects legacy rows; new `sync_doctor_needs_staff()` + 3 triggers `trg_sync_needs_staff_on_insert/update/delete ON staff_assignment` keeps `needs_staff` in sync (assigned→FALSE, ended/deleted→re-check); new `is_staff_required() BOOLEAN` = `EXISTS approved active doctor with NO ACTIVE assignment` (used by Home). Existing `get_doctors_needing_staff()` kept for compat, now filters `end_date > NOW()` correctly.
+
+## Backend - Modified
+- **server/controllers/patientController.js:1142-1185** added `getStaffRequiredStatus` → `SELECT is_staff_required()` → `{staff_required: true|false}` with fallback live EXISTS query; exported. Keeps `getDoctorsWithoutStaff` (DEPRECATED compat).
+- **server/routes/patientRoutes.js:20-30** added `GET /staff-required` (public, before `/looking-for-staff`) via `getStaffRequiredStatus`; existing `GET /looking-for-staff` kept but Home no longer uses.
+
+## Frontend - Modified
+- **client/src/pages/Home.jsx:8-22,51-71** replaced `looking` state + `GET /looking-for-staff` fetch with `staffRequired` boolean + `GET /staff-required`; section `New Doctors Looking for Staff` cards (leaked `full_name/department/photo`) replaced by generic conditional banner `📢 STAFF REQUIRED / Some doctors currently need available staff members / [Register as Staff → /staff-registration]` (white card, teal button, no doctor data). Uses existing route `/staff-registration`.
+
+## ApiTester - Modified
+- **server/apiTester/patient.http:90-108** `2.12` marked DEPRECATED, added `2.13 GET /staff-required` generic + `2.14` Cases A-E toggle verification (approve→GET→assign→GET).
+- **api-tests.http:22-31,695-720** updated endpoint count `102→103`, counts per file, added `5.10b GET /staff-required` + `5.10c` deprecated note.
+
+## Docs - Modified
+- **LATEST_CHANGES.md §12**, **LEARN_BACKEND.md § Staff Required**, **TRIGGERS.md** added is_staff_required + 4 triggers.
+- Existing appointment/payment, department status, auth unchanged.
+
+## Verification Cases
+- A assigned → `needs_staff FALSE, staff_required false, banner hidden`; B none → `TRUE/true/visible`; C later assigned → `false/hidden`; D multi one none → `true/visible`; E all have → `false/hidden`.
