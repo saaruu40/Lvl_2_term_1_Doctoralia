@@ -55,7 +55,7 @@ const applyDoctor = async (req, res) => {
     if (existingDoctor.rows.length > 0) {
       return res.status(409).json({
         message:
-          "এই email বা medical registration number দিয়ে আগে থেকেই আবেদন করা হয়েছে।",
+          "this email or medical registration number already exists",
       });
     }
 
@@ -121,77 +121,7 @@ const applyDoctor = async (req, res) => {
   }
 };
 
-// const loginDoctor = async (req, res) => {
-//   try {
-//     const { email, password } = req.body;
 
-//     const result = await pool.query(
-//       `SELECT doctor_id, full_name, email, password, approved_by,approval_status
-//        FROM doctor
-//        WHERE email = $1`,
-//       [email]
-//     );
-
-//     if (result.rows.length === 0) {
-//       return res.status(401).json({
-//         message: "Invalid email or password.",
-//       });
-//     }
-
-//     const doctor = result.rows[0];
-
-//     const passwordMatched = await bcrypt.compare(
-//       password,
-//       doctor.password
-//     );
-
-//     if (!passwordMatched) {
-//       return res.status(401).json({
-//         message: "Invalid email or password.",
-//       });
-//     }
-
-//     if (doctor.approval_status === 'pending') {
-//       return res.status(403).json({
-//         message: "Your account is waiting for admin approval.",
-//       });
-//     }
-// if (doctor.approval_status === "rejected") {
-//   return res.status(403).json({
-//     message: "Your doctor application was rejected.",
-//   });
-// }
-// const token = jwt.sign(
-//   {
-//     doctor_id: doctor.doctor_id,
-//     role: "doctor",
-//   },
-//   process.env.JWT_SECRET,
-//   {
-//     expiresIn: "1d",
-//   }
-// );
-//     return res.status(200).json({
-//       message: "Doctor login successful.",
-//       token:token,
-//       doctor: {
-//         doctor_id: doctor.doctor_id,
-//         full_name: doctor.full_name,
-//         email: doctor.email,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Doctor login error:", error);
-
-//     return res.status(500).json({
-//       message: "Doctor login failed.",
-//       error: error.message,
-//     });
-//   }
-// };
-// // module.exports = {
-// //   applyDoctor,
-// // };
 const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1353,7 +1283,7 @@ const createReferral = async (req, res) => {
     }
 
 
-    // নিজের কাছে refer করা যাবে না
+    //can't refer to self
 
     if (
       Number(referred_to) ===
