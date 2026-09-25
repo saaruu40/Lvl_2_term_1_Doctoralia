@@ -83,7 +83,7 @@ const getMySchedules = async (req, res) => {
     const nowForFilter = new Date();
     const windowForFilter = getScheduleWindowStatus(nowForFilter);
     const yearEnd = getYearEndDateStr(nowForFilter);
-    // TEMP TESTING: any schedule from today through Dec 31 of same Dhaka year
+    // Only today onwards — filter out past/expired dates (available_date >= today)
     const result = await pool.query(
       `SELECT s.schedule_id, TO_CHAR(s.available_date,'YYYY-MM-DD') AS available_date, s.start_time, s.end_time, s.hospital_id, s.created_at, s.updated_at,
                ds.status as slot_status, ds.doctor_id,
@@ -91,9 +91,9 @@ const getMySchedules = async (req, res) => {
         FROM schedule s
         JOIN doctor_schedule ds ON s.schedule_id = ds.schedule_id
         LEFT JOIN hospital h ON s.hospital_id = h.hospital_id
-        WHERE ds.doctor_id = $1 AND s.available_date >= $2 AND s.available_date <= $3
+        WHERE ds.doctor_id = $1 AND s.available_date >= CURRENT_DATE AND s.available_date <= $2
         ORDER BY s.available_date ASC, s.start_time ASC`,
-      [doctorId, windowForFilter.currentDate, yearEnd]
+      [doctorId, yearEnd]
     );
 
     const now = new Date();
@@ -256,10 +256,10 @@ const updateSchedule = async (req, res) => {
     );
     if (existing.rows.length === 0) return res.status(404).json({ message: "Schedule not found or not owned by you." });
     const schedule = existing.rows[0];
-    // TEMP TESTING: Allow editing any same-year schedule (from today through Dec 31); window 1:30 AM–12:00 PM still gated
+    // Allow editing any same-year schedule (from today through Dec 31); window 8:00 PM–12:00 AM still gated
     const existingDateStr = schedule.available_date_str || (schedule.available_date instanceof Date ? schedule.available_date.toISOString().split("T")[0] : String(schedule.available_date).split("T")[0]);
     try { assertTargetDateInSameYear(existingDateStr, now); } catch (e) {
-      return res.status(400).json({ message: "Only same-year schedules (from today through Dec 31) can be edited during the 1:30 AM–12:00 PM window.", details: e.details });
+      return res.status(400).json({ message: "Only same-year schedules (from today through Dec 31) can be edited during the 8:00 PM–12:00 AM window.", details: e.details });
     }
     if (isSlotExpired(schedule.available_date, schedule.end_time, now)) {
       return res.status(400).json({ message: "Expired schedule cannot be modified." });

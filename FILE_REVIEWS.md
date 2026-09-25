@@ -1,7 +1,7 @@
 # FILE REVIEWS - Doctor Schedule Management
 
 ## Summary
-Implemented doctor-owned schedule management with strict 00:01-03:00 window for following day only, removed staff schedule control.
+Implemented doctor-owned schedule management with strict **20:00-24:00 (8:00 PM–12:00 AM)** window Asia/Dhaka, dates **today→Dec31 same year**, removed staff schedule control. **Old window `01:30-12:00` (`90-720`) → New window `20:00-24:00` (`1200-1440`)** — only time values changed, date/year validation unchanged. Midnight: `24:00` is end-of-day, `00:00` next day is closed.
 
 ## Database
 - **database/schema.sql:98-115**
@@ -9,14 +9,14 @@ Implemented doctor-owned schedule management with strict 00:01-03:00 window for 
   - Added indexes `idx_schedule_doctor_date` and `idx_schedule_doctor_date_time`
 
 ## Backend - New Files
-- **server/utils/scheduleWindow.js**
+- **server/utils/scheduleWindow.js** — updated 2026-09-25 to **window 20:00-24:00 (8:00 PM–12:00 AM) Asia/Dhaka**, `WINDOW_START_MIN=1200`, `WINDOW_END_MIN=1440` (24:00 end-of-day, `00:00` next day is closed). Handles midnight boundary: `1200 ≤ mins ≤1440` (19:59 closed, 20:00 open, 23:59 open, 00:00 closed). `getScheduleWindowStatus()` now returns `window:"20:00-24:00"`.
   - Central helper, no external lib, TIMEZONE=Asia/Dhaka (env TIMEZONE)
-  - `getNowInTimezone()`, `getTargetDateStr()`, `isWithinScheduleWindow()` (1 <= mins <= 180), `getScheduleWindowStatus()`, `assertScheduleWindow()`, `assertTargetDate()`, `isSlotExpired()`
-  - Used by all schedule mutating endpoints
+  - `getNowInTimezone()`, `getTargetDateStr()`, `isWithinScheduleWindow()` (1200 <= mins <= 1440), `getScheduleWindowStatus()`, `assertScheduleWindow()`, `assertTargetDateInSameYear()` (today→Dec31 same year, unchanged), `isSlotExpired()`
+  - Used by all schedule mutating endpoints (`assertScheduleWindow` throws `403 WINDOW_CLOSED` outside 20:00-24:00)
 
-- **server/controllers/doctorScheduleController.js**
-  - `getWindowInfo`, `getMySchedules` (enriches with is_expired/computed_status), `createSchedule`, `updateSchedule`, `deleteSchedule`, `updateAvailability`
-  - Enforces: auth doctor, getActiveDoctor, ownership via doctor_id compare, window 00:01-03:00, targetDate == tomorrow, start<end, no overlap (`NOT (end <= newStart OR start >= newEnd)`), no duplicate, no edit/delete if booked/expired
+- **server/controllers/doctorScheduleController.js** — window logic reused, not duplicated
+  - `getWindowInfo`, `getMySchedules` (filter `available_date >= CURRENT_DATE` today→Dec31, enriches with is_expired/computed_status), `createSchedule`, `updateSchedule`, `deleteSchedule`, `updateAvailability`
+  - Enforces: auth doctor, getActiveDoctor, ownership via doctor_id compare, window **20:00-24:00**, dates **today→Dec31 same year** via `assertTargetDateInSameYear`, start<end, no overlap (`NOT (end <= newStart OR start >= newEnd)`), no duplicate, no edit/delete if expired/WORKING
 
 - **server/apiTester/doctorSchedule.http**
   - 19 cases covering window, overlap, duplicate, ownership, staff blocked, expired
@@ -217,3 +217,56 @@ Fixed false advertisement caused by blind `pending→approved → needs_staff TR
 
 ## Verification Cases
 - A assigned → `needs_staff FALSE, staff_required false, banner hidden`; B none → `TRUE/true/visible`; C later assigned → `false/hidden`; D multi one none → `true/visible`; E all have → `false/hidden`.
+
+---
+
+# FILE REVIEWS - Staff API Security (Patient + Staff) + Tester Update (2026-09-25)
+
+## Summary
+Proper security: **12 Staff APIs** via `router.use(authMiddleware, roleMiddleware("staff"))` after 3 public (`GET /status`, `POST /apply`, `POST /login`), staff notification ownership `req.params.id vs req.user.staff_id`, Staff complaint via `POST /api/staff/complaints` (`filed_by_id` from `req.user.staff_id`, spoof blocked), generic `POST /api/complaints` marked **DEPRECATED for Staff** (use staff endpoint). No new lib/route/file deletion, reuse existing JWT `expiresIn:"1d"`.
+
+## Backend - Modified
+
+- **server/routes/staffRoutes.js:218** `router.use(authMiddleware, roleMiddleware("staff"))` after public 3 — protects 12: `GET /profile:230`, `GET /my-assignment:237`, `GET /dashboard/stats:247`, `GET /appointments:262`, `GET /hospitals:273`, `GET /available-schedules:290` (`?doctor_id`), `PATCH /appointments/:id/schedule:282`, `PATCH .../approve:296`, `PATCH .../reject:301`, `GET /complaint-targets:314`, `POST /complaints:324`, `GET /complaints:334`. Public stay public: `GET /status:181`, `POST /apply:185`, `POST /login:199`, plus `GET /patients/doctors/:id/schedules`, `GET /api/learn/health`, `GET /`, `GET /api/test-db`.
+  - Expected: `No token→401 No token provided` (`authMiddleware:8`), `Invalid→401 Invalid or expired token` (`32`), `Non-staff (doctor/patient)→403 Access denied` (`roleMiddleware:3`), `Valid staff→200`.
+
+- **server/routes/patientRoutes.js:1** — 7 Patient APIs now `auth+role+own-ID`:
+  - `verifyPatientOwnership` checks `String(req.user.patient_id) !== String(req.params.id || req.params.patientId) →403`
+  - `GET /profile/:id:117`, `PUT /profile/:id:122`, `GET /:patientId/appointments:139`, `GET /:patientId/complaints:169` → `auth, role patient, verifyOwn`
+  - `DELETE /appointments/:id:144` → `auth, role patient` + controller checks `SELECT patient_id FROM appointment WHERE id=$1` → `403` if other patient's, then `DELETE ... WHERE appointment_id=$1 AND patient_id=$2 AND status='pending'`
+  - `POST /payments:154` + `POST /complaints:164` → `auth, role patient`, controllers take `patient_id=req.user.patient_id` (not body) → `401` if missing
+
+- **server/controllers/patientController.js:703,746,1205** — `deleteAppointment` ownership check, `makePayment`/`createPatientComplaint` use `req.user.patient_id` only (ignore body `patient_id:999` spoof).
+
+- **server/routes/notificationRoutes.js:15** — added `verifyStaffNotificationRole` symmetric to `verifyPatientNotificationRole`: `if :role==="staff" → roleMiddleware("staff")`, `if :role==="patient" → roleMiddleware("patient")`. Then `notificationController.js:15` `String(role)!==tokenRole || String(id)!==tokenId →403` enforces `req.params.id vs req.user.staff_id`. Results: `Staff own→200`, `Another staff→403`, `No/invalid→401`, `Doctor on staff/:id→403`.
+
+- **server/routes/complaintRoutes.js:9** — generic `POST /api/complaints` marked `DEPRECATED for Staff — Staff must use POST /api/staff/complaints` (kept for backward compat patient/doctor, no staff spoof via generic). Staff path is `/api/staff/complaints` (`staffController.js:1166` `filed_by_staff_id = req.user.staff_id`).
+
+- **server/controllers/staffController.js / notificationController.js** — no new logic, reuse existing `req.user.staff_id` checks (`staffController 371,415,540, etc.`, `notificationController 15`).
+
+## ApiTester - Modified (no new file)
+
+- **server/apiTester/staff.http** — **updated existing file**, kept structure/comments, replaced header with:
+  ```http
+  @staffToken = PASTE_VALID_STAFF_JWT_HERE
+  @staffToken2 = PASTE_ANOTHER_STAFF_JWT_HERE
+  @doctorToken = PASTE_VALID_DOCTOR_JWT_HERE
+  @patientToken = PASTE_VALID_PATIENT_JWT_HERE
+  @staffId = 1
+  @otherStaffId = 2
+  ```
+  - Labeled sections `1. Staff Auth — PUBLIC`, `2. Profile & Assignment — PROTECTED`, `3. Appointments — PROTECTED`, `4. Complaints — PROTECTED (staff endpoint, filed_by_id from JWT, DEPRECATED generic marked)`, `5. Public Doctor Schedules — PUBLIC`, `6. Staff Notifications — PROTECTED + OWNERSHIP`, `7. Learn Health — PUBLIC`, `8. Authentication Negative Tests` — per spec.
+  - For each protected 12 Staff APIs added 4 cases: `A Valid 200 Bearer {{staffToken}}`, `B No token 401`, `C Invalid 401 Bearer invalid-token`, `D Wrong role 403 Bearer {{doctorToken/patientToken}}`.
+  - Notifications 5 cases: `Own 200 GET /notifications/staff/{{staffId}} Bearer {{staffToken}}`, `Another 403 GET /notifications/staff/{{otherStaffId}} Bearer {{staffToken}}`, `No 401`, `Invalid 401`, `Doctor 403`.
+  - Complaint spoof covered in `4.2E` `POST /api/staff/complaints` — even if body contains `filed_by_id:999`, backend uses `req.user.staff_id`.
+
+- **server/apiTester/patient.http** — **replaced** 8 patient APIs with secured blocks (`profile`, `appointments`, `payments`, `complaints`, `notifications`) — each `200 own` + `403 other` + `401` + `403 wrong role`, bodies without `patient_id` (JWT only). Same tester structure kept.
+
+## Docs - Modified
+- **LEARN_BACKEND.md** — appended staff security section (protected list, `401/403`, `req.user.staff_id`, notification ownership, complaint spoof, tester variables).
+
+## Verification
+- `GET /api/staff/profile` no header `401`, invalid `401`, doctor `403`, staff own `200` (all 12 same pattern)
+- `GET /api/notifications/staff/1` own `200`, `2` with token `1` `403`
+- `POST /api/staff/complaints` with body `filed_by_id:999` → `201` but stored `filed_by_staff_id = req.user.staff_id` (1)
+- `vite build ✓` (`107 modules`)

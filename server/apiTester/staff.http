@@ -1,38 +1,46 @@
 # =============================================================================
-# Staff â€” All Operations â€” Doctoralia
+# Staff — All Operations — Doctoralia
 # =============================================================================
 # Base: http://localhost:5000
 # Routes: server/routes/staffRoutes.js + server/controllers/staffController.js
-# Auth: JWT Bearer â€” role "staff", server/middleware/authMiddleware.js
+# Auth: JWT Bearer — role "staff", server/middleware/authMiddleware.js + roleMiddleware("staff")
 # Multer: uploads/staff, field profile_pic, 5MB, jpeg/jpg/png/webp
 #
 # HOW TO USE:
-#  1. POST /api/staff/login â†’ copy token â†’ paste into @staffToken
-#  2. Every ðŸ”’ block below sends Authorization: Bearer {{staffToken}}
+#  1. POST /api/staff/login → copy token → paste into @staffToken
+#  2. Every 🔒 block below sends Authorization: Bearer {{staffToken}}
 #  3. Staff must be approved by admin and assigned to a doctor to manage appointments
+#  4. For negative tests, use @staffToken2 (another staff), @doctorToken, @patientToken
 # =============================================================================
 
 @baseUrl = http://localhost:5000
-@staffToken = PASTE_STAFF_JWT_HERE
+
+@staffToken = PASTE_VALID_STAFF_JWT_HERE
+@staffToken2 = PASTE_ANOTHER_STAFF_JWT_HERE
+@doctorToken = PASTE_VALID_DOCTOR_JWT_HERE
+@patientToken = PASTE_VALID_PATIENT_JWT_HERE
+
+@staffId = 1
+@otherStaffId = 2
 
 # -------------------------------------------------------------------------
-# 0. Health â€” public
+# 0. Health — PUBLIC
 # -------------------------------------------------------------------------
 
-### 0.1 Root
+### 0.1 Root — PUBLIC — GET /
 GET {{baseUrl}}/
 
-### 0.2 Test DB
+### 0.2 Test DB — PUBLIC — GET /api/test-db
 GET {{baseUrl}}/api/test-db
 
 # -------------------------------------------------------------------------
-# 1. Staff Auth â€” public
+# 1. Staff Auth — PUBLIC
 # -------------------------------------------------------------------------
 
-### 1.1 Registration status â€” public â€” GET /api/staff/status
+### 1.1 Registration status — PUBLIC — GET /api/staff/status
 GET {{baseUrl}}/api/staff/status
 
-### 1.2 Register â€” public â€” POST /api/staff/apply â€” multipart profile_pic
+### 1.2 Register — PUBLIC — POST /api/staff/apply — multipart profile_pic
 POST {{baseUrl}}/api/staff/apply
 Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryStaff
 
@@ -59,7 +67,7 @@ Content-Type: image/jpeg
 < ./server/uploads/staff/staff.jpg
 ------WebKitFormBoundaryStaff--
 
-### 1.3 Login â€” public â€” POST /api/staff/login â€” â­ RETURNS TOKEN
+### 1.3 Login — PUBLIC — POST /api/staff/login — ⭐ RETURNS TOKEN
 # @name staffLogin
 POST {{baseUrl}}/api/staff/login
 Content-Type: application/json
@@ -70,38 +78,115 @@ Content-Type: application/json
 }
 
 # -------------------------------------------------------------------------
-# 2. Staff â€” Profile & Assignment â€” ðŸ”’ staff
+# 2. Staff — Profile & Assignment — PROTECTED — STAFF JWT
 # -------------------------------------------------------------------------
 
-### 2.1 Get own profile â€” ðŸ”’ staff â€” GET /api/staff/profile
+### 2.1 Get own profile — PROTECTED — STAFF JWT — GET /api/staff/profile
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/profile
 Authorization: Bearer {{staffToken}}
 
-### 2.2 My assignment â€” ðŸ”’ staff â€” GET /api/staff/my-assignment â€” { assignment: null|row }
+### 2.1B No token → 401
+GET {{baseUrl}}/api/staff/profile
+# No Authorization — expect 401 { message: "No token provided" }
+
+### 2.1C Invalid token → 401
+GET {{baseUrl}}/api/staff/profile
+Authorization: Bearer invalid-token
+# Expect 401 { message: "Invalid or expired token" }
+
+### 2.1D Wrong role (Doctor) → 403
+GET {{baseUrl}}/api/staff/profile
+Authorization: Bearer {{doctorToken}}
+# Expect 403 { message: "Access denied. You do not have permission." }
+
+### 2.2 My assignment — PROTECTED — STAFF JWT — GET /api/staff/my-assignment
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/my-assignment
 Authorization: Bearer {{staffToken}}
 
-### 2.3 Dashboard stats â€” ðŸ”’ staff â€” GET /api/staff/dashboard/stats
+### 2.2B No token → 401
+GET {{baseUrl}}/api/staff/my-assignment
+# No Authorization — expect 401
+
+### 2.2C Invalid token → 401
+GET {{baseUrl}}/api/staff/my-assignment
+Authorization: Bearer invalid-token
+
+### 2.2D Wrong role (Doctor) → 403
+GET {{baseUrl}}/api/staff/my-assignment
+Authorization: Bearer {{doctorToken}}
+
+### 2.3 Dashboard stats — PROTECTED — STAFF JWT — GET /api/staff/dashboard/stats
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/dashboard/stats
 Authorization: Bearer {{staffToken}}
 
+### 2.3B No token → 401
+GET {{baseUrl}}/api/staff/dashboard/stats
+
+### 2.3C Invalid token → 401
+GET {{baseUrl}}/api/staff/dashboard/stats
+Authorization: Bearer invalid-token
+
+### 2.3D Wrong role (Patient) → 403
+GET {{baseUrl}}/api/staff/dashboard/stats
+Authorization: Bearer {{patientToken}}
+
 # -------------------------------------------------------------------------
-# 3. Staff â€” Appointments â€” ðŸ”’ staff â€” requires ACTIVE assignment to doctor
+# 3. Staff — Appointments — PROTECTED — STAFF JWT — requires ACTIVE assignment to doctor
 # -------------------------------------------------------------------------
 
-### 3.1 List appointments â€” ðŸ”’ staff â€” GET /api/staff/appointments â€” else {appointments:[], assigned:false}
+### 3.1 List appointments — PROTECTED — STAFF JWT — GET /api/staff/appointments
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/appointments
 Authorization: Bearer {{staffToken}}
 
-### 3.2 Hospitals â€” ðŸ”’ staff â€” GET /api/staff/hospitals
+### 3.1B No token → 401
+GET {{baseUrl}}/api/staff/appointments
+
+### 3.1C Invalid token → 401
+GET {{baseUrl}}/api/staff/appointments
+Authorization: Bearer invalid-token
+
+### 3.1D Wrong role (Doctor) → 403
+GET {{baseUrl}}/api/staff/appointments
+Authorization: Bearer {{doctorToken}}
+
+### 3.2 Hospitals — PROTECTED — STAFF JWT — GET /api/staff/hospitals
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/hospitals
 Authorization: Bearer {{staffToken}}
 
-### 3.3 Available schedules for a doctor â€” ðŸ”’ staff â€” GET /api/staff/available-schedules?doctor_id=1
+### 3.2B No token → 401
+GET {{baseUrl}}/api/staff/hospitals
+
+### 3.2C Invalid token → 401
+GET {{baseUrl}}/api/staff/hospitals
+Authorization: Bearer invalid-token
+
+### 3.2D Wrong role (Doctor) → 403
+GET {{baseUrl}}/api/staff/hospitals
+Authorization: Bearer {{doctorToken}}
+
+### 3.3 Available schedules for a doctor — PROTECTED — STAFF JWT — GET /api/staff/available-schedules?doctor_id=1
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
 Authorization: Bearer {{staffToken}}
 
-### 3.4 Assign hospital + schedule to appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/schedule
+### 3.3B No token → 401
+GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
+
+### 3.3C Invalid token → 401
+GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
+Authorization: Bearer invalid-token
+
+### 3.3D Wrong role (Patient) → 403
+GET {{baseUrl}}/api/staff/available-schedules?doctor_id=1
+Authorization: Bearer {{patientToken}}
+
+### 3.4 Assign hospital + schedule to appointment — PROTECTED — STAFF JWT — PATCH /api/staff/appointments/:id/schedule
+# A. Valid Staff token → 200 (if appointment and schedule valid)
 PATCH {{baseUrl}}/api/staff/appointments/1/schedule
 Content-Type: application/json
 Authorization: Bearer {{staffToken}}
@@ -111,23 +196,91 @@ Authorization: Bearer {{staffToken}}
   "schedule_id": 1
 }
 
-### 3.5 Approve appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/approve â€” pendingâ†’scheduled
+### 3.4B No token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/schedule
+Content-Type: application/json
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 3.4C Invalid token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/schedule
+Content-Type: application/json
+Authorization: Bearer invalid-token
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 3.4D Wrong role (Doctor) → 403
+PATCH {{baseUrl}}/api/staff/appointments/1/schedule
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "hospital_id": 1,
+  "schedule_id": 1
+}
+
+### 3.5 Approve appointment — PROTECTED — STAFF JWT — PATCH /api/staff/appointments/:id/approve
+# A. Valid Staff token → 200
 PATCH {{baseUrl}}/api/staff/appointments/1/approve
 Authorization: Bearer {{staffToken}}
 
-### 3.6 Reject appointment â€” ðŸ”’ staff â€” PATCH /api/staff/appointments/:id/reject
+### 3.5B No token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/approve
+
+### 3.5C Invalid token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/approve
+Authorization: Bearer invalid-token
+
+### 3.5D Wrong role (Doctor) → 403
+PATCH {{baseUrl}}/api/staff/appointments/1/approve
+Authorization: Bearer {{doctorToken}}
+
+### 3.6 Reject appointment — PROTECTED — STAFF JWT — PATCH /api/staff/appointments/:id/reject
+# A. Valid Staff token → 200
 PATCH {{baseUrl}}/api/staff/appointments/1/reject
 Authorization: Bearer {{staffToken}}
 
+### 3.6B No token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/reject
+
+### 3.6C Invalid token → 401
+PATCH {{baseUrl}}/api/staff/appointments/1/reject
+Authorization: Bearer invalid-token
+
+### 3.6D Wrong role (Patient) → 403
+PATCH {{baseUrl}}/api/staff/appointments/1/reject
+Authorization: Bearer {{patientToken}}
+
 # -------------------------------------------------------------------------
-# 4. Staff â€” Complaints â€” ðŸ”’ staff â€” fires trg_complaint_admin
+# 4. Staff — Complaints — PROTECTED — STAFF JWT — fires trg_complaint_admin
 # -------------------------------------------------------------------------
 
-### 4.1 Complaint targets â€” ðŸ”’ staff â€” GET /api/staff/complaint-targets
+### 4.1 Complaint targets — PROTECTED — STAFF JWT — GET /api/staff/complaint-targets
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/complaint-targets
 Authorization: Bearer {{staffToken}}
 
-### 4.2 Create complaint â€” ðŸ”’ staff â€” POST /api/staff/complaints
+### 4.1B No token → 401
+GET {{baseUrl}}/api/staff/complaint-targets
+
+### 4.1C Invalid token → 401
+GET {{baseUrl}}/api/staff/complaint-targets
+Authorization: Bearer invalid-token
+
+### 4.1D Wrong role (Patient) → 403
+GET {{baseUrl}}/api/staff/complaint-targets
+Authorization: Bearer {{patientToken}}
+
+### 4.2 Create complaint via Staff endpoint — PROTECTED — STAFF JWT — POST /api/staff/complaints
+# Staff complaint must use POST /api/staff/complaints (🔒 staff, filed_by_id from req.user.staff_id)
+# Body does NOT contain filed_by_type/filed_by_id — taken from JWT
+# A. Valid Staff token → 201
 POST {{baseUrl}}/api/staff/complaints
 Content-Type: application/json
 Authorization: Bearer {{staffToken}}
@@ -140,7 +293,43 @@ Authorization: Bearer {{staffToken}}
   "description": "Patient did not appear for scheduled appointment after confirmation."
 }
 
-### 4.3 Alternative â€” against doctor â€” ðŸ”’ staff
+### 4.2B No token → 401
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear."
+}
+
+### 4.2C Invalid token → 401
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer invalid-token
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear."
+}
+
+### 4.2D Wrong role (Doctor) → 403
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "patient",
+  "against_id": 1,
+  "complaint_type": "No-show",
+  "description": "Patient did not appear."
+}
+
+### 4.2E Spoof attempt — filed_by_id from JWT, not body (use staff endpoint, body filed_by_id ignored if sent)
+# Try to spoof: send filed_by_id 999, backend must use req.user.staff_id={{staffId}}, not 999
 POST {{baseUrl}}/api/staff/complaints
 Content-Type: application/json
 Authorization: Bearer {{staffToken}}
@@ -152,11 +341,37 @@ Authorization: Bearer {{staffToken}}
   "description": "Doctor was late for scheduled consultation without notice."
 }
 
-### 4.4 Complaint history â€” ðŸ”’ staff â€” GET /api/staff/complaints
+### 4.3 Alternative — against doctor — PROTECTED — STAFF JWT
+POST {{baseUrl}}/api/staff/complaints
+Content-Type: application/json
+Authorization: Bearer {{staffToken}}
+
+{
+  "against_type": "doctor",
+  "against_id": 1,
+  "complaint_type": "Unprofessional conduct",
+  "description": "Doctor was late for scheduled consultation without notice."
+}
+
+### 4.4 Complaint history — PROTECTED — STAFF JWT — GET /api/staff/complaints
+# A. Valid Staff token → 200
 GET {{baseUrl}}/api/staff/complaints
 Authorization: Bearer {{staffToken}}
 
-### 4.5 Generic complaint via POST /api/complaints â€” public
+### 4.4B No token → 401
+GET {{baseUrl}}/api/staff/complaints
+
+### 4.4C Invalid token → 401
+GET {{baseUrl}}/api/staff/complaints
+Authorization: Bearer invalid-token
+
+### 4.4D Wrong role (Doctor) → 403
+GET {{baseUrl}}/api/staff/complaints
+Authorization: Bearer {{doctorToken}}
+
+### 4.5 Generic complaint via POST /api/complaints — DEPRECATED for Staff
+# DEPRECATED for Staff — Staff must use POST /api/staff/complaints (🔒 staff)
+# Generic endpoint kept for backward compat (patient/doctor) but NOT recommended for Staff
 POST {{baseUrl}}/api/complaints
 Content-Type: application/json
 
@@ -170,39 +385,52 @@ Content-Type: application/json
 }
 
 # -------------------------------------------------------------------------
-# 5. Doctor schedules (read-only for staff) â€” view via staff available-schedules, patient view
+# 5. Public Doctor Schedules — PUBLIC (staff can view via available-schedules, patient view also public)
 # -------------------------------------------------------------------------
 
-### 5.1 Patient view doctor schedules â€” public â€” GET /api/patients/doctors/1/schedules
+### 5.1 Patient view doctor schedules — PUBLIC — GET /api/patients/doctors/1/schedules
 GET {{baseUrl}}/api/patients/doctors/1/schedules
 
 # -------------------------------------------------------------------------
-# 6. Notifications (staff view) â€” public
+# 6. Staff Notifications — PROTECTED + OWNERSHIP — STAFF JWT
 # -------------------------------------------------------------------------
+# Staff must use own staff_id from JWT (req.user.staff_id), not URL alone
+# Flow: authMiddleware (401 if no/invalid) → roleMiddleware("staff") (403 if doctor/patient) → controller checks String(req.params.id) === String(req.user.staff_id) (403 if other staff)
 
-### 6.1 Staff notifications â€” GET /api/notifications/staff/:id
-GET {{baseUrl}}/api/notifications/staff/1
+### 6.1 Own notifications → 200
+GET {{baseUrl}}/api/notifications/staff/{{staffId}}
 Authorization: Bearer {{staffToken}}
 
-# -------------------------------------------------------------------------
-# 7. Learn â€” public
-# -------------------------------------------------------------------------
+### 6.2 Another Staff's notifications → 403
+GET {{baseUrl}}/api/notifications/staff/{{otherStaffId}}
+Authorization: Bearer {{staffToken}}
+# Expect 403 { message: "Access denied. You can only access your own notifications." }
 
-### 7.1 Health â€” GET /api/learn/health
-GET {{baseUrl}}/api/learn/health
-
-# =============================================================================
-# 8. Frontend Auth (no API — JWT reuse) — manual verify
-# =============================================================================
-# Auto logout 5m: client/src/hooks/useInactivityLogout.js in StaffDashboard.jsx:51.
-# Already logged in: visit /staff-login while any token ? block.
-# Protected: /staff-dashboard without token ? redirect to /staff-login.
-
-### 8.1 Smoke 401 without token ? 401
-GET {{baseUrl}}/api/staff/profile
+### 6.3 No token → 401
+GET {{baseUrl}}/api/notifications/staff/{{staffId}}
 # No Authorization — expect 401
 
-### 8.2 Bad token
-GET {{baseUrl}}/api/staff/profile
-Authorization: Bearer bad.token.here
+### 6.4 Invalid token → 401
+GET {{baseUrl}}/api/notifications/staff/{{staffId}}
+Authorization: Bearer invalid-token
+
+### 6.5 Doctor token → 403
+GET {{baseUrl}}/api/notifications/staff/{{staffId}}
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 7. Learn Health — PUBLIC
+# -------------------------------------------------------------------------
+
+### 7.1 Health — PUBLIC — GET /api/learn/health
+GET {{baseUrl}}/api/learn/health
+
+### 7.2 Test DB — PUBLIC — GET /api/test-db
+GET {{baseUrl}}/api/test-db
+
+# -------------------------------------------------------------------------
+# 8. Authentication Negative Tests — SUMMARY (already covered per-endpoint above)
+# -------------------------------------------------------------------------
+# For every protected Staff API, re-run: No token 401, Invalid 401, Wrong role 403
+# Already included as B/C/D cases for 2.1-4.4 and 6.1-6.5. Generic complaint spoof covered in 4.2E.
 

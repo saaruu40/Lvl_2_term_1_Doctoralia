@@ -149,8 +149,10 @@ const loadNotifications = async()=>{
 
 try{
 
+const token = localStorage.getItem("token");
 const res = await axios.get(
-`http://localhost:5000/api/notifications/admin/${storedAdmin.admin_id}`
+`http://localhost:5000/api/notifications/admin/${storedAdmin.admin_id}`,
+{ headers: { Authorization: `Bearer ${token}` } }
 );
 
 

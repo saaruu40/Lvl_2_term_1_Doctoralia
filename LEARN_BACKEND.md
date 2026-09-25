@@ -5,30 +5,30 @@
 ### 1. Central Rule (Single Source)
 File `server/utils/scheduleWindow.js` is the single source for time rules. No duplication in each controller.
 - `TIMEZONE = process.env.TIMEZONE || "Asia/Dhaka"`
-- `WINDOW_START_MIN=1 (00:01)`, `WINDOW_END_MIN=180 (03:00)`
+- `WINDOW_START_MIN=1200 (20:00)`, `WINDOW_END_MIN=1440 (24:00)` — **8:00 PM to 12:00 AM inclusive** (24:00 is end-of-day, `00:00` next day is closed)
 - `getNowInTimezone()` uses `Intl.DateTimeFormat` with timeZone to get wall time without extra lib.
-- `getTargetDateStr()` = today in that timezone +1 day.
-- `isWithinScheduleWindow(now)` = minutes 1-180 inclusive.
-- `assertScheduleWindow(now)` throws 403 if outside.
-- `assertTargetDate(submitted, now)` throws 400 if not tomorrow.
+- `getTargetDateStr()` = today in that timezone +1 day (kept for compatibility, not used for schedule date validation).
+- `isWithinScheduleWindow(now)` = `1200 ≤ minutes ≤ 1440` inclusive (19:59 closed, 20:00 open, 23:59 open, 00:00 closed).
+- `assertScheduleWindow(now)` throws 403 `WINDOW_CLOSED` if outside 20:00-24:00.
+- `assertTargetDateInSameYear(submitted, now)` = `today ≤ submitted ≤ Dec31` same year (unchanged).
 - `isSlotExpired(date, end_time, now)` = if date < today => expired, if date == today and nowMinutes > endMinutes => expired.
 
 ### 2. Doctor Schedule Controller
 `server/controllers/doctorScheduleController.js`
 - Reuses `getActiveDoctor()` (approval + suspension) like other doctor controllers.
-- `createSchedule`: 
+ - `createSchedule`: 
   1. check auth doctor
-  2. assert window
-  3. force available_date = tomorrow (ignore frontend)
+  2. assert window (20:00-24:00)
+  3. validate `available_date` is `today → Dec31` same year via `assertTargetDateInSameYear` (today defaults if missing)
   4. validate start<end, slot_status
   5. overlap check SQL: `NOT (end_time <= $3 OR start_time >= $4)`
   6. duplicate check
   7. INSERT
 
 - `updateSchedule` / `deleteSchedule` / `updateAvailability`:
-  1. assert window
+  1. assert window (20:00-24:00)
   2. fetch existing, check doctor_id === req.user.doctor_id (ownership)
-  3. assert existing.available_date == tomorrow
+  3. assert `available_date` is `today → Dec31` same year via `assertTargetDateInSameYear`
   4. check not expired, not booked
   5. overlap check with exclude self
   6. UPDATE/DELETE
@@ -65,21 +65,22 @@ Covers cases 10:00-11:00 and 10:30-11:30 overlapping.
 - Staff routes use `roleMiddleware("staff")` for new GET available-schedules.
 
 ### 8. Frontend UX
-- DoctorDashboard polls window status, disables buttons outside 00:01-03:00, shows targetDate read-only.
+- DoctorDashboard polls `GET /schedules/window` (`window:"20:00-24:00"`), disables Fix/Edit buttons outside 20:00-24:00, shows `today → Dec31` date picker (min=today, max=Dec31), banner `8:00 PM–12:00 AM`.
 - StaffDashboard no longer has date/time inputs, only dropdown of available slots.
 
-## Verification Cases (from spec)
-1. 12:00 AM => isWithin false => 403
-2. 12:01 AM => minutes=1 => true => allowed
-3. 2:30 AM => 150 => allowed
-4. 3:00 AM => 180 => allowed
-5. 3:01 AM => 181 => false => 403
-6. create for today => assertTargetDate fails => 400
-7. create for +2 days => 400
-8. modify another doctor => ownership check => 403
-9. staff call doctor API => roleMiddleware => 403
-10. expired slot => isSlotExpired => filtered/hidden, booking 400
-11. overlapping => SQL overlap => 409
+## Verification Cases (new window 20:00-24:00, dates today→Dec31)
+1. 19:59 => 1199 false => 403 WINDOW_CLOSED
+2. 20:00 => 1200 true => allowed
+3. 22:30 => 1350 true => allowed
+4. 23:59 => 1439 true => allowed
+5. 00:00 next day => 0 false => 403 (24:00 is end, not new day start)
+6. create for yesterday => assertTargetDateInSameYear fails => 400
+7. create for next year Jan 01 => 400 (year must be same)
+8. create for Dec31 same year => allowed (if within window)
+9. modify another doctor => ownership check => 403
+10. staff call doctor API => roleMiddleware => 403
+11. expired slot => isSlotExpired => filtered/hidden, booking 400
+12. overlapping => SQL overlap => 409
 
 ## Env Vars
 - `TIMEZONE` (default Asia/Dhaka)
@@ -227,3 +228,36 @@ Old `set_doctor_needs_staff()` did `pending→approved → NEW.needs_staff:=TRUE
 
 ### 6. Cases
 A assigned→false hidden, B none→true visible, C later assigned→false hidden, D multi one none→true visible, E all have→false hidden. Verified via `SELECT doctor_id,needs_staff FROM doctor`, `SELECT * FROM staff_assignment WHERE status='ACTIVE'`, `SELECT is_staff_required()`.
+
+---
+
+## Staff & Patient API Security + Staff Tester Update (2026-09-25) — Option 1 (Staff via `POST /api/staff/complaints`)
+
+### 1. Which APIs were protected
+- **Staff 12:** via `server/routes/staffRoutes.js:218` `router.use(authMiddleware, roleMiddleware("staff"))` after 3 public (`GET /status:181`, `POST /apply:185`, `POST /login:199`) → `GET /profile:230`, `GET /my-assignment:237`, `GET /dashboard/stats:247`, `GET /appointments:262`, `GET /hospitals:273`, `GET /available-schedules:290`, `PATCH /appointments/:id/schedule:282`, `PATCH .../approve:296`, `PATCH .../reject:301`, `GET /complaint-targets:314`, `POST /complaints:324`, `GET /complaints:334`. Public stay: `GET /status`, `POST /apply/login`, `GET /patients/doctors/:id/schedules`, `GET /api/learn/health`, `GET /`, `GET /api/test-db`.
+- **Patient 8:** `server/routes/patientRoutes.js:1` 7 + `notificationRoutes.js:15` 1 → `GET /profile/:id:117`, `PUT /profile/:id:122`, `GET /:patientId/appointments:139`, `DELETE /appointments/:id:144`, `POST /payments:154`, `POST /complaints:164`, `GET /:patientId/complaints:169`, `GET /notifications/patient/:id`.
+  - `verifyPatientOwnership` → `String(req.user.patient_id) !== String(req.params.id|patientId) →403`
+  - `DELETE` adds `SELECT patient_id FROM appointment` check → `403` if other's, then `DELETE ... WHERE appointment_id=$1 AND patient_id=$2 AND status='pending'`
+  - `POST /payments` + `POST /complaints` take `patient_id=req.user.patient_id` (ignore body `patient_id:999` spoof) → `401` if no JWT
+- **Notifications staff:** `server/routes/notificationRoutes.js:15` added `verifyStaffNotificationRole` (`:role==="staff" → roleMiddleware("staff")`) symmetric to patient. Controller `notificationController.js:15` `String(role)!==tokenRole || String(id)!==tokenId →403` enforces `req.params.id vs req.user.staff_id` (`Own 200`, `Another 403`).
+- **Complaints Staff path:** `POST /api/staff/complaints` (`staffController.js:1166` `filed_by_staff_id = req.user.staff_id`) is proper Staff path; generic `POST /api/complaints` (`complaintRoutes.js:9`) marked **DEPRECATED for Staff — Staff must use `POST /api/staff/complaints`** (no Staff spoof via generic, duplicate avoided).
+
+### 2. Expected 401/403
+- `No token →401 No token provided` (`authMiddleware:8`)
+- `Invalid/expired →401 Invalid or expired token` (`32`)
+- `Non-staff token on staff API →403 Access denied` (`roleMiddleware:3`)
+- `Valid Staff own →200`, `Another staff's notification/appointment →403 Forbidden: you can only access your own data / cannot delete another patient's appointment / Access denied. You can only access your own notifications.`
+- `POST /api/staff/complaints` with body `filed_by_id:999` → `201` but stored `filed_by_staff_id = req.user.staff_id` (spoof blocked)
+
+### 3. Tester changes (no new file, existing updated)
+- **`server/apiTester/staff.http`** replaced header with `@staffToken, @staffToken2, @doctorToken, @patientToken, @staffId, @otherStaffId` (you paste real JWTs).
+  - Sections labeled `1. Staff Auth — PUBLIC`, `2. Profile & Assignment — PROTECTED`, `3. Appointments — PROTECTED`, `4. Complaints — PROTECTED (staff endpoint, filed_by_id from JWT, DEPRECATED generic)`, `5. Public Doctor Schedules — PUBLIC`, `6. Staff Notifications — PROTECTED + OWNERSHIP`, `7. Learn Health — PUBLIC`.
+  - For each 12 protected Staff APIs: `A Valid 200 Bearer {{staffToken}}`, `B No token 401`, `C Invalid 401 Bearer invalid-token`, `D Wrong role 403 Bearer {{doctorToken/patientToken}}`.
+  - `6` notifications: 5 cases `Own 200 GET /notifications/staff/{{staffId}} Bearer {{staffToken}}`, `Another 403 {{otherStaffId}}`, `No 401`, `Invalid 401`, `Doctor 403`.
+  - `4.2E` `POST /api/staff/complaints` spoof: body without `filed_by_id` (or with `999` try) → backend uses `req.user.staff_id`.
+- **`server/apiTester/patient.http`** replaced 8 patient APIs with secured blocks (`200 own`, `403 other`, `401`, `403 wrong role`, bodies without `patient_id`).
+
+### 4. Verification
+- `GET /api/staff/profile` no header `401`, invalid `401`, doctor `403`, staff `200` (all 12 same).
+- `GET /api/notifications/staff/1` own `200`, `/2` with token `1` `403`.
+- `POST /api/staff/complaints` with `filed_by_id:999` → stored `filed_by_staff_id = 1` (not 999).

@@ -5,7 +5,7 @@
 # Routes: server/routes/doctorRoutes.js + server/controllers/doctorController.js
 #         + server/controllers/doctorScheduleController.js + server/utils/scheduleWindow.js
 # Auth: JWT Bearer — role "doctor", server/middleware/authMiddleware.js
-# Timezone: Asia/Dhaka — TEMP TESTING window 1:30 AM–12:00 PM, dates today→Dec31 (was 12:55-18:00 tomorrow→Dec31)
+# Timezone: Asia/Dhaka — window 8:00 PM–12:00 AM (20:00-24:00), dates today→Dec31 (was 1:30 AM–12:00 PM)
 #
 # HOW TO USE:
 #  1. GET /api/departments (public) to get department_id
@@ -277,10 +277,10 @@ GET {{baseUrl}}/api/doctors/complaints
 Authorization: Bearer {{doctorToken}}
 
 # -------------------------------------------------------------------------
-# 8. Doctor — Schedule Management — 🔒 doctor — window 1:30-12:00 today→Dec31
+# 8. Doctor — Schedule Management — 🔒 doctor — window 20:00-24:00 (8:00 PM–12:00 AM) today→Dec31
 # -------------------------------------------------------------------------
 
-### 8.1 Window info — 🔒 doctor — GET /api/doctors/schedules/window — {currentDate, targetDate, isOpen, window:"01:30-12:00"}
+### 8.1 Window info — 🔒 doctor — GET /api/doctors/schedules/window — {currentDate, targetDate, isOpen, window:"20:00-24:00"} — 8:00 PM–12:00 AM, 12:00 AM is end-of-day (24:00), 00:00 next day is closed
 GET {{baseUrl}}/api/doctors/schedules/window
 Authorization: Bearer {{doctorToken}}
 
@@ -288,7 +288,7 @@ Authorization: Bearer {{doctorToken}}
 GET {{baseUrl}}/api/doctors/schedules
 Authorization: Bearer {{doctorToken}}
 
-### 8.3 Create schedule — 🔒 doctor — POST /api/doctors/schedules — inside window only else 403 WINDOW_CLOSED
+### 8.3 Create schedule — 🔒 doctor — POST /api/doctors/schedules — ONLY when window 20:00-24:00 open else 403 WINDOW_CLOSED (test 19:59 closed, 20:00 open, 23:59 open, 00:00 closed)
 POST {{baseUrl}}/api/doctors/schedules
 Content-Type: application/json
 Authorization: Bearer {{doctorToken}}
@@ -312,7 +312,7 @@ Authorization: Bearer {{doctorToken}}
   "hospital_id": 1
 }
 
-### 8.5 Update own schedule — 🔒 doctor — PUT /api/doctors/schedules/:id — window+today+not expired/WORKING
+### 8.5 Update own schedule — 🔒 doctor — PUT /api/doctors/schedules/:id — window 20:00-24:00 + today→Dec31 + not expired/WORKING
 PUT {{baseUrl}}/api/doctors/schedules/1
 Content-Type: application/json
 Authorization: Bearer {{doctorToken}}

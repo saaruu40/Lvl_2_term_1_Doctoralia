@@ -306,7 +306,7 @@ const getDoctorAvailableSchedules = async (req, res) => {
     const result = await pool.query(
       `SELECT s.schedule_id, s.available_date, s.start_time, s.end_time, s.hospital_id, ds.status as slot_status, h.hospital_name
        FROM schedule s JOIN doctor_schedule ds ON s.schedule_id=ds.schedule_id LEFT JOIN hospital h ON s.hospital_id=h.hospital_id
-       WHERE ds.doctor_id=$1 AND ds.status='AVAILABLE' ORDER BY s.available_date ASC, s.start_time ASC`,
+       WHERE ds.doctor_id=$1 AND ds.status='AVAILABLE' AND s.available_date >= CURRENT_DATE ORDER BY s.available_date ASC, s.start_time ASC`,
       [doctorId]
     );
     const available = result.rows.filter((s) => !isSlotExpired(s.available_date, s.end_time, now));
@@ -702,33 +702,43 @@ const getPatientAppointments = async (
 };
 const deleteAppointment = async (req, res) => {
   try {
-    const appointmentId =
-      req.params.id;
+    const appointmentId = req.params.id;
+    const tokenPatientId = req.user && req.user.patient_id;
+    if (!tokenPatientId) {
+      return res.status(401).json({ message: "Unauthorized. Please login as patient." });
+    }
+
+    // Verify appointment belongs to logged-in patient (403 if not)
+    const ownerCheck = await pool.query(
+      `SELECT patient_id FROM appointment WHERE appointment_id = $1`,
+      [appointmentId]
+    );
+    if (ownerCheck.rows.length > 0 && Number(ownerCheck.rows[0].patient_id) !== Number(tokenPatientId)) {
+      return res.status(403).json({ message: "Forbidden: you cannot delete another patient's appointment." });
+    }
 
     const result = await pool.query(
       `DELETE FROM appointment
        WHERE appointment_id = $1
+         AND patient_id = $2
          AND appointment_status = 'pending'
        RETURNING appointment_id`,
-      [appointmentId]
+      [appointmentId, tokenPatientId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        message:
-          "Pending appointment not found.",
+        message: "Pending appointment not found.",
       });
     }
 
     return res.status(200).json({
-      message:
-        "Appointment request cancelled successfully.",
+      message: "Appointment request cancelled successfully.",
     });
 
   } catch (error) {
     return res.status(500).json({
-      message:
-        "Could not cancel appointment.",
+      message: "Could not cancel appointment.",
       error: error.message,
     });
   }
@@ -737,20 +747,22 @@ const makePayment = async (req, res) => {
   const client = await pool.connect();
 
   try {
+    // patient_id ONLY from JWT (do not accept from body) — 401 if missing
+    const patient_id = req.user && req.user.patient_id;
+    if (!patient_id) {
+      return res.status(401).json({ message: "Unauthorized. Please login as patient." });
+    }
     const {
-      patient_id,
       appointment_id,
       payment_method,
     } = req.body;
 
     if (
-      !patient_id ||
       !appointment_id ||
       !payment_method
     ) {
       return res.status(400).json({
-        message:
-          "Patient ID, appointment ID and payment method are required.",
+        message: "Appointment ID and payment method are required.",
       });
     }
 
@@ -1195,8 +1207,12 @@ const createPatientComplaint = async (
   res
 ) => {
   try {
+    // patient_id ONLY from JWT (do not accept from body) — 401 if missing
+    const patient_id = req.user && req.user.patient_id;
+    if (!patient_id) {
+      return res.status(401).json({ message: "Unauthorized. Please login as patient." });
+    }
     const {
-      patient_id,
       against_type,
       against_id,
       appointment_id,
@@ -1205,15 +1221,13 @@ const createPatientComplaint = async (
     } = req.body;
 
     if (
-      !patient_id ||
       !against_type ||
       !against_id ||
       !complaint_type ||
       !description
     ) {
       return res.status(400).json({
-        message:
-          "Required complaint information is missing.",
+        message: "Required complaint information is missing.",
       });
     }
 

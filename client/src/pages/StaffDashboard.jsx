@@ -182,8 +182,10 @@ const storedStaff = JSON.parse(
 if(!storedStaff?.staff_id)
 return;
 
+const token = localStorage.getItem("token");
 const res = await axios.get(
-`http://localhost:5000/api/notifications/staff/${storedStaff.staff_id}`
+`http://localhost:5000/api/notifications/staff/${storedStaff.staff_id}`,
+{ headers: { Authorization: `Bearer ${token}` } }
 );
 
 

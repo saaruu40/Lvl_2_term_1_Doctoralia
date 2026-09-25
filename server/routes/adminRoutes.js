@@ -105,14 +105,17 @@ router.post("/departments",authMiddleware, roleMiddleware("admin"),addDepartment
 router.put("/departments/:id",authMiddleware,roleMiddleware("admin"), updateDepartment);
 //router.delete("/departments/:id",authMiddleware,roleMiddleware("admin"), deleteDepartment);
 router.put(
-"/departments/:id/disable",
-adminController.disableDepartment
+  "/departments/:id/disable",
+  authMiddleware,
+  roleMiddleware("admin"),
+  adminController.disableDepartment
 );
 
-
 router.put(
-"/departments/:id/enable",
-adminController.enableDepartment
+  "/departments/:id/enable",
+  authMiddleware,
+  roleMiddleware("admin"),
+  adminController.enableDepartment
 );
 
 module.exports = router;

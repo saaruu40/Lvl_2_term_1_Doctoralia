@@ -1,18 +1,22 @@
 # =============================================================================
-# Patient â€” All Operations â€” Doctoralia
+# Patient — All Operations — Doctoralia
 # =============================================================================
 # Base: http://localhost:5000
 # Routes: server/routes/patientRoutes.js + server/controllers/patientController.js
-# Auth: JWT Bearer â€” role "patient" only for /prescriptions and /referrals
-# Note: Most patient routes are currently PUBLIC (see warnings below) â€” only 2 require token
-# DB triggers: trg_patient_registration, trg_payment_success, trg_prescription_notification, trg_referral_notification, trg_appointment_status_notification, trg_appointment_department_check (BEFORE INSERT block inactive dept)
+# Auth: JWT Bearer — role "patient" for ALL personal data (profile/appointments/payments/complaints/prescriptions/referrals/notifications)
+# Public: browsing doctors/departments/schedules, auth register/login, staff-required
+# Protected: profile, appointments, payments, complaints, notifications — auth+role+own-ID
+# DB triggers: trg_patient_registration, trg_payment_success, trg_prescription_notification, trg_referral_notification, trg_appointment_status_notification, trg_appointment_department_check
 # =============================================================================
 
 @baseUrl = http://localhost:5000
 @patientToken = PASTE_PATIENT_JWT_HERE
+@patientToken2 = PASTE_PATIENT2_JWT_HERE
+@doctorToken = PASTE_DOCTOR_JWT_HERE
+@patientId = 1
 
 # -------------------------------------------------------------------------
-# 0. Health â€” public
+# 0. Health — public
 # -------------------------------------------------------------------------
 
 ### 0.1 Root
@@ -22,10 +26,10 @@ GET {{baseUrl}}/
 GET {{baseUrl}}/api/test-db
 
 # -------------------------------------------------------------------------
-# 1. Patient Auth â€” public
+# 1. Patient Auth — public
 # -------------------------------------------------------------------------
 
-### 1.1 Register â€” public â€” POST /api/patients/register â€” all 8 fields required, fires trg_patient_registration
+### 1.1 Register — public — POST /api/patients/register — all 8 fields required
 POST {{baseUrl}}/api/patients/register
 Content-Type: application/json
 
@@ -40,7 +44,7 @@ Content-Type: application/json
   "address": "Dhanmondi, Dhaka"
 }
 
-### 1.2 Login â€” public â€” POST /api/patients/login â€” â­ RETURNS TOKEN
+### 1.2 Login — public — POST /api/patients/login — ⭐ RETURNS TOKEN
 # @name patientLogin
 POST {{baseUrl}}/api/patients/login
 Content-Type: application/json
@@ -51,74 +55,77 @@ Content-Type: application/json
 }
 
 # -------------------------------------------------------------------------
-# 2. Patient â€” Browsing Doctors & Departments â€” public
+# 2. Patient — Browsing Doctors & Departments — public
 # -------------------------------------------------------------------------
 
-### 2.1 List approved doctors â€” public â€” GET /api/patients/doctors
+### 2.1 List approved doctors — public — GET /api/patients/doctors
 GET {{baseUrl}}/api/patients/doctors
 
-### 2.2 Filter by department â€” public â€” GET /api/patients/doctors?department_id=1
+### 2.2 Filter by department — public — GET /api/patients/doctors?department_id=1
 GET {{baseUrl}}/api/patients/doctors?department_id=1
 
-### 2.3 Search â€” public â€” GET /api/patients/doctors?search=Arif
+### 2.3 Search — public — GET /api/patients/doctors?search=Arif
 GET {{baseUrl}}/api/patients/doctors?search=Arif
 
-### 2.4 Available doctors by date â€” public â€” GET /api/patients/doctors/available-by-date?date=YYYY-MM-DD
+### 2.4 Available doctors by date — public — GET /api/patients/doctors/available-by-date?date=YYYY-MM-DD
 GET {{baseUrl}}/api/patients/doctors/available-by-date?date=2026-09-24
 
-### 2.5 With department â€” public
+### 2.5 With department — public
 GET {{baseUrl}}/api/patients/doctors/available-by-date?date=2026-09-24&department_id=1
 
-### 2.6 Schedules for a doctor on a date â€” public â€” GET /api/patients/doctors/:id/schedules/by-date?date=
+### 2.6 Schedules for a doctor on a date — public — GET /api/patients/doctors/:id/schedules/by-date?date=
 GET {{baseUrl}}/api/patients/doctors/1/schedules/by-date?date=2026-09-24
 
-### 2.7 Departments â€” public â€” GET /api/patients/departments â€” active-only WHERE status='active'
+### 2.7 Departments — public — GET /api/patients/departments — active-only
 GET {{baseUrl}}/api/patients/departments
 
-### 2.8 Public departments (common) â€” GET /api/departments
+### 2.8 Public departments (common) — GET /api/departments
 GET {{baseUrl}}/api/departments
 
-### 2.9 Doctor details â€” public â€” GET /api/patients/doctors/:id
+### 2.9 Doctor details — public — GET /api/patients/doctors/:id
 GET {{baseUrl}}/api/patients/doctors/1
 
-### 2.10 Doctor available schedules â€” public â€” GET /api/patients/doctors/:id/schedules
+### 2.10 Doctor available schedules — public — GET /api/patients/doctors/:id/schedules
 GET {{baseUrl}}/api/patients/doctors/1/schedules
 
-### 2.11 Staff list â€” public â€” GET /api/patients/staff
+### 2.11 Staff list — public — GET /api/patients/staff
 GET {{baseUrl}}/api/patients/staff
 
-### 2.12 New Doctors Looking for Staff â€” public â€” GET /api/patients/doctors/looking-for-staff â€” DEPRECATED (kept for backward compat, Home no longer uses â€” leaks doctor details)
-# Uses get_doctors_needing_staff() FUNCTION: newly approved (needs_staff=true only if shobi unavailable) + active + NOT EXISTS ACTIVE
-# Public, no token. Expected 200: { doctors: [...] } â€” old logic without global check, keep for compat
+### 2.12 New Doctors Looking for Staff — public — GET /api/patients/doctors/looking-for-staff — DEPRECATED
 GET {{baseUrl}}/api/patients/doctors/looking-for-staff
 
-### 2.13 Staff Required â€” generic boolean (NEW â€” Home generic ad, no doctor details) â€” public â€” GET /api/patients/staff-required
-# Uses is_staff_required() FUNCTION: TRUE only if EXISTS approved active doctor with NO ACTIVE assignment AND globally NO available staff (shobi unavailable)
-# Rule: global e available thakle â†’ FALSE â†’ Home banner hidden (assign korar moto staff ase, ad dorkar nai)
-#       shobi unavailable + kono doctor er ACTIVE nai â†’ TRUE â†’ Home shows "STAFF REQUIRED / Some doctors need staff / Register as Staff"
-# Triggers: trg_doctor_needs_staff (pendingâ†’approved checks global), trg_sync_needs_staff_* (assignment), trg_staff_needs_sync (staff approve/suspend re-evaluates all)
-# Public, no token. Expected 200: { staff_required: true } or { staff_required: false }
+### 2.13 Staff Required — generic boolean — public — GET /api/patients/staff-required
 GET {{baseUrl}}/api/patients/staff-required
 
-### 2.14 Staff-Required toggle verification â€” manual (Cases with global check)
-# Case A: Doctor approve + global 1 available (staff approved not assigned) â†’ GET /staff-required â†’ { staff_required: false } â€” NO banner
-# Case B: Doctor approve + global 0 (shobi assigned/suspended) â†’ GET /staff-required â†’ { staff_required: true } â€” banner visible
-# Case C: B visible â†’ POST /api/doctors/assign-staff (new staff approve kore assign) â†’ GET â†’ { staff_required: false } â€” disappears; shobi unavailable thakle abar true
-# Case D: Multi â€” A has staff, B none, C has but global 0 â†’ true; global 1 thakle false (shobi unavailable tokhoni true)
-# Case E: All have staff â†’ false; OR global 1 available thakle false (chahe doctor er staff na thakuk, assign korar moto staff ase)
-# Verify: PATCH /api/admin/doctors/:id/approve (admin.http 3.2) then GET /staff-required; PATCH /api/admin/staff/:id/approve then GET again; check: SELECT is_staff_required(); SELECT doctor_id, needs_staff FROM doctor WHERE approval_status='approved'
+### 2.14 Staff-Required toggle verification — manual
 GET {{baseUrl}}/api/patients/staff-required
 
 # -------------------------------------------------------------------------
-# 3. Patient â€” Profile â€” public (âš ï¸ should be ðŸ”’)
+# 3. Patient — Profile — 🔒 patient (auth+role+own-ID)
 # -------------------------------------------------------------------------
+# Flow: Client → authMiddleware (401 if no/invalid token) → roleMiddleware("patient") (403 if doctor/admin token) → verifyPatientOwnership (403 if token patient_id ≠ :id) → controller
+# Test with own token 200, other patient token 403, no token 401, doctor token 403
 
-### 3.1 Get profile â€” public â€” GET /api/patients/profile/:id
-GET {{baseUrl}}/api/patients/profile/1
+### 3.1 Get own profile — 🔒 patient — GET /api/patients/profile/:id — 200 own
+GET {{baseUrl}}/api/patients/profile/{{patientId}}
+Authorization: Bearer {{patientToken}}
 
-### 3.2 Update profile â€” public â€” PUT /api/patients/profile/:id
-PUT {{baseUrl}}/api/patients/profile/1
+### 3.1b Get other patient's profile — 🔒 patient — 403 Forbidden
+GET {{baseUrl}}/api/patients/profile/999
+Authorization: Bearer {{patientToken}}
+
+### 3.1c No token — 401 Unauthorized
+GET {{baseUrl}}/api/patients/profile/{{patientId}}
+# No Authorization — expect 401 { message: "No token provided" }
+
+### 3.1d Doctor token on patient profile — 403 Access denied
+GET {{baseUrl}}/api/patients/profile/{{patientId}}
+Authorization: Bearer {{doctorToken}}
+
+### 3.2 Update own profile — 🔒 patient — PUT /api/patients/profile/:id — 200
+PUT {{baseUrl}}/api/patients/profile/{{patientId}}
 Content-Type: application/json
+Authorization: Bearer {{patientToken}}
 
 {
   "full_name": "Moriom Akter Updated",
@@ -129,13 +136,29 @@ Content-Type: application/json
   "address": "Gulshan-1, Dhaka - updated"
 }
 
+### 3.2b Update other patient's profile — 403
+PUT {{baseUrl}}/api/patients/profile/999
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+  "full_name": "Hacker"
+}
+
+### 3.2c No token — 401
+PUT {{baseUrl}}/api/patients/profile/{{patientId}}
+Content-Type: application/json
+
+{
+  "full_name": "Hacker"
+}
+
 # -------------------------------------------------------------------------
-# 4. Patient â€” Appointments & Payments â€” public (with internal checks + DB trigger)
+# 4. Patient — Appointments & Payments — 🔒 patient
 # -------------------------------------------------------------------------
 
-### 4.1 Create appointment â€” ðŸ”’ patient (now protected) â€” POST /api/patients/appointments â€” 400 if dept inactive (DB trigger P0001)
-# Auth: Bearer {{patientToken}} required (authMiddleware+role patient). patient_id comes from JWT req.user.patient_id, NOT body â€” prevents spoofing. Body: { doctor_id, schedule_id, hospital_id? } hospital optional (uses slot hospital if omitted)
-# Uses isSlotExpired() server authority + calculate_appointment_fee() for fee, book_appointment procedure for DB workflow, trg_appointment_department_check still blocks inactive dept.
+### 4.1 Create appointment — 🔒 patient — POST /api/patients/appointments — 201
+# patient_id comes from JWT req.user.patient_id, NOT body
 POST {{baseUrl}}/api/patients/appointments
 Content-Type: application/json
 Authorization: Bearer {{patientToken}}
@@ -146,7 +169,7 @@ Authorization: Bearer {{patientToken}}
   "hospital_id": 1
 }
 
-### 4.1b Without JWT â€” expect 401
+### 4.1b Without JWT — 401
 POST {{baseUrl}}/api/patients/appointments
 Content-Type: application/json
 
@@ -155,32 +178,97 @@ Content-Type: application/json
   "schedule_id": 1
 }
 
-### 4.2 List own appointments â€” public â€” GET /api/patients/:patientId/appointments
-GET {{baseUrl}}/api/patients/1/appointments
+### 4.1c Doctor token — 403
+POST {{baseUrl}}/api/patients/appointments
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
 
-### 4.3 Cancel pending â€” public â€” DELETE /api/patients/appointments/:id
+{
+  "doctor_id": 1,
+  "schedule_id": 1
+}
+
+### 4.2 List own appointments — 🔒 patient — GET /api/patients/:patientId/appointments — 200 own
+GET {{baseUrl}}/api/patients/{{patientId}}/appointments
+Authorization: Bearer {{patientToken}}
+
+### 4.2b Other patient's appointments — 403
+GET {{baseUrl}}/api/patients/999/appointments
+Authorization: Bearer {{patientToken}}
+
+### 4.2c No token — 401
+GET {{baseUrl}}/api/patients/{{patientId}}/appointments
+# No Authorization — expect 401
+
+### 4.2d Doctor token — 403
+GET {{baseUrl}}/api/patients/{{patientId}}/appointments
+Authorization: Bearer {{doctorToken}}
+
+### 4.3 Cancel own pending — 🔒 patient — DELETE /api/patients/appointments/:id — 200
 DELETE {{baseUrl}}/api/patients/appointments/1
+Authorization: Bearer {{patientToken}}
 
-### 4.4 Make payment â€” public â€” POST /api/patients/payments â€” fires trg_payment_success + trg_appointment_status_notification
+### 4.3b Delete other's appointment — 403 Forbidden
+DELETE {{baseUrl}}/api/patients/appointments/1
+Authorization: Bearer {{patientToken2}}
+# Expect 403 { message: "Forbidden: you cannot delete another patient's appointment." } if appointment belongs to patientId 1 and token is patient 2
+
+### 4.3c No token — 401
+DELETE {{baseUrl}}/api/patients/appointments/1
+# No Authorization — expect 401
+
+### 4.4 Make payment — 🔒 patient — POST /api/patients/payments — patient_id from JWT only
+# Body: { appointment_id, payment_method } — patient_id NOT accepted from body
+POST {{baseUrl}}/api/patients/payments
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+  "appointment_id": 1,
+  "payment_method": "bkash"
+}
+
+### 4.4b Payment with patient_id in body (ignored, JWT used) — still 201 if appointment belongs to JWT patient
+POST {{baseUrl}}/api/patients/payments
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+  "patient_id": 999,
+  "appointment_id": 1,
+  "payment_method": "bkash"
+}
+
+### 4.4c No token — 401
 POST {{baseUrl}}/api/patients/payments
 Content-Type: application/json
 
 {
-  "patient_id": 1,
+  "appointment_id": 1,
+  "payment_method": "bkash"
+}
+
+### 4.4d Other patient's appointment payment — 403 (appointment belongs to other patient)
+POST {{baseUrl}}/api/patients/payments
+Content-Type: application/json
+Authorization: Bearer {{patientToken2}}
+
+{
   "appointment_id": 1,
   "payment_method": "bkash"
 }
 
 # -------------------------------------------------------------------------
-# 5. Patient â€” Complaints â€” public
+# 5. Patient — Complaints — 🔒 patient
 # -------------------------------------------------------------------------
 
-### 5.1 Create complaint â€” public â€” POST /api/patients/complaints â€” fires trg_complaint_admin
+### 5.1 Create complaint — 🔒 patient — POST /api/patients/complaints — patient_id from JWT only
+# Body: { against_type, against_id, appointment_id?, complaint_type, description } — patient_id NOT in body
 POST {{baseUrl}}/api/patients/complaints
 Content-Type: application/json
+Authorization: Bearer {{patientToken}}
 
 {
-  "patient_id": 1,
   "against_type": "doctor",
   "against_id": 1,
   "appointment_id": 1,
@@ -188,62 +276,110 @@ Content-Type: application/json
   "description": "Doctor was dismissive during consultation and did not explain diagnosis properly."
 }
 
-### 5.2 Complaint history â€” public â€” GET /api/patients/:patientId/complaints
-GET {{baseUrl}}/api/patients/1/complaints
-
-### 5.3 Generic complaint (also via POST /api/complaints) â€” public
-POST {{baseUrl}}/api/complaints
+### 5.1b No token — 401
+POST {{baseUrl}}/api/patients/complaints
 Content-Type: application/json
 
 {
-  "filed_by_type": "patient",
-  "filed_by_id": 1,
   "against_type": "doctor",
   "against_id": 1,
-  "appointment_id": 1,
-  "complaint_type": "Service delay",
-  "description": "Long waiting time beyond appointment slot."
+  "complaint_type": "Rude behavior",
+  "description": "Test"
 }
 
+### 5.1c Doctor token — 403
+POST {{baseUrl}}/api/patients/complaints
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+  "against_type": "doctor",
+  "against_id": 1,
+  "complaint_type": "Rude behavior",
+  "description": "Test"
+}
+
+### 5.1d With patient_id in body (ignored) — uses JWT
+POST {{baseUrl}}/api/patients/complaints
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+  "patient_id": 999,
+  "against_type": "staff",
+  "against_id": 1,
+  "complaint_type": "Unprofessional conduct",
+  "description": "Staff unavailable during assigned duty hours."
+}
+
+### 5.2 Complaint history — 🔒 patient — GET /api/patients/:patientId/complaints — 200 own
+GET {{baseUrl}}/api/patients/{{patientId}}/complaints
+Authorization: Bearer {{patientToken}}
+
+### 5.2b Other patient's complaints — 403
+GET {{baseUrl}}/api/patients/999/complaints
+Authorization: Bearer {{patientToken}}
+
+### 5.2c No token — 401
+GET {{baseUrl}}/api/patients/{{patientId}}/complaints
+# No Authorization — expect 401
+
+### 5.2d Doctor token — 403
+GET {{baseUrl}}/api/patients/{{patientId}}/complaints
+Authorization: Bearer {{doctorToken}}
+
 # -------------------------------------------------------------------------
-# 6. Patient â€” Protected (own data) â€” ðŸ”’ patient
+# 6. Patient — Protected (own data) — 🔒 patient
 # -------------------------------------------------------------------------
 
-### 6.1 Prescriptions â€” ðŸ”’ patient â€” GET /api/patients/prescriptions â€” req.user.patient_id
+### 6.1 Prescriptions — 🔒 patient — GET /api/patients/prescriptions — req.user.patient_id
 GET {{baseUrl}}/api/patients/prescriptions
 Authorization: Bearer {{patientToken}}
 
-### 6.2 Referrals â€” ðŸ”’ patient â€” GET /api/patients/referrals
+### 6.2 Referrals — 🔒 patient — GET /api/patients/referrals
 GET {{baseUrl}}/api/patients/referrals
 Authorization: Bearer {{patientToken}}
 
 # -------------------------------------------------------------------------
-# 7. Notifications â€” public (should be ðŸ”’)
+# 7. Notifications — 🔒 patient (auth+patient role+own-ID)
+# -------------------------------------------------------------------------
+# Flow: auth → verifyPatientNotificationRole (if :role === "patient" then role patient) → getNotifications (checks String(role)===tokenRole && String(id)===tokenId → 403)
+
+### 7.1 Patient notifications own — 🔒 patient — 200
+GET {{baseUrl}}/api/notifications/patient/{{patientId}}
+Authorization: Bearer {{patientToken}}
+
+### 7.1b Other patient's notifications — 403
+GET {{baseUrl}}/api/notifications/patient/999
+Authorization: Bearer {{patientToken}}
+
+### 7.1c No token — 401
+GET {{baseUrl}}/api/notifications/patient/{{patientId}}
+# No Authorization — expect 401
+
+### 7.1d Doctor token on patient notifications — 403
+GET {{baseUrl}}/api/notifications/patient/{{patientId}}
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 8. Learn — public (for completeness)
 # -------------------------------------------------------------------------
 
-### 7.1 Patient notifications â€” GET /api/notifications/patient/:id
-GET {{baseUrl}}/api/notifications/patient/1
-
-# -------------------------------------------------------------------------
-# 8. Learn â€” public (for completeness)
-# -------------------------------------------------------------------------
-
-### 8.1 Health â€” GET /api/learn/health
+### 8.1 Health — GET /api/learn/health
 GET {{baseUrl}}/api/learn/health
 
 # =============================================================================
-# 9. Frontend Auth (no API ï¿½ JWT reuse) ï¿½ manual verify
+# 9. Frontend Auth (no API — JWT reuse) — manual verify
 # =============================================================================
 # Auto logout 5m: client/src/hooks/useInactivityLogout.js in PatientDashboard.jsx:833.
 # Already logged in: visit /patient-login while any token ? block.
-# Protected: /patient-dashboard without token ? redirect to /patient-login; public browsing (GET /api/patients/doctors) stays public.
+# Protected: /patient-dashboard without token ? redirect to /patient-login
 # Booking requires auth: bookAppointmentWithSchedule checks localStorage patient before POST; backend validates.
 
-### 9.1 Smoke 401 prescriptions without token ? 401 (patientRoutes.js:163 auth+role patient)
+### 9.1 Smoke 401 prescriptions without token → 401
 GET {{baseUrl}}/api/patients/prescriptions
-# No Authorization ï¿½ expect 401
+# No Authorization — expect 401
 
 ### 9.2 Bad token
 GET {{baseUrl}}/api/patients/prescriptions
 Authorization: Bearer bad.token.here
-

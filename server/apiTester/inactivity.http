@@ -1,0 +1,105 @@
+# =============================================================================
+# Inactivity & Auto Logout — API Tester — Doctoralia
+# Base: http://localhost:5000
+# Purpose: Verify frontend 5m auto-logout is UX-only; backend JWT 1d remains,
+#          and multi-login requires first logout (single shared token).
+# Related doc: docs/INACTIVITY_AUTO_LOGOUT.md
+# Hook: client/src/hooks/useInactivityLogout.js (timeout 5*60*1000, 3s mousemove throttle)
+# Auth: server/middleware/authMiddleware.js (jwt.verify, expiresIn 1d)
+# Logins: client/src/pages/*Login.jsx alreadyLoggedIn + inactive_logout flag
+# =============================================================================
+
+@baseUrl = http://localhost:5000
+@adminToken = PASTE_ADMIN_JWT_HERE
+@doctorToken = PASTE_DOCTOR_JWT_HERE
+@staffToken = PASTE_STAFF_JWT_HERE
+@patientToken = PASTE_PATIENT_JWT_HERE
+
+# -------------------------------------------------------------------------
+# 0. Health
+# -------------------------------------------------------------------------
+
+### 0.1 Root
+GET {{baseUrl}}/
+
+### 0.2 Test DB
+GET {{baseUrl}}/api/test-db
+
+# -------------------------------------------------------------------------
+# 1. No token → 401 (authMiddleware.js:8) — smoke for all dashboards
+#    After inactivity redirect frontend clears token → same 401.
+# -------------------------------------------------------------------------
+
+### 1.1 Admin stats without token — expect 401 No token provided
+GET {{baseUrl}}/api/admin/dashboard/stats
+# No Authorization
+
+### 1.2 Doctor profile without token — expect 401
+GET {{baseUrl}}/api/doctors/profile
+# No Authorization
+
+### 1.3 Staff profile without token — expect 401
+GET {{baseUrl}}/api/staff/profile
+# No Authorization
+
+### 1.4 Patient profile without token — expect 401
+GET {{baseUrl}}/api/patients/profile
+# No Authorization
+
+### 1.5 Bad token — expect 401 Invalid or expired token (authMiddleware.js:32)
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer bad.token.here
+
+# -------------------------------------------------------------------------
+# 2. With valid token within 5m → 200 (proves JWT still ok)
+#    Do these within 5m of login; after idle 5m frontend would have cleared token.
+# -------------------------------------------------------------------------
+
+### 2.1 Admin stats with valid token — expect 200
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+
+### 2.2 Doctor profile with valid token — expect 200
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{doctorToken}}
+
+### 2.3 Staff stats with valid token — expect 200
+GET {{baseUrl}}/api/staff/dashboard/stats
+Authorization: Bearer {{staffToken}}
+
+### 2.4 Patient profile with valid token — expect 200
+GET {{baseUrl}}/api/patients/profile
+Authorization: Bearer {{patientToken}}
+
+# -------------------------------------------------------------------------
+# 3. Old token still valid on server until 1d — proves frontend-only
+#    Copy token before inactivity, then after auto-logout curl with old token → 200 until 1d.
+# -------------------------------------------------------------------------
+
+### 3.1 Admin stats with old token after frontend auto-logout — still 200 until 1d
+GET {{baseUrl}}/api/admin/dashboard/stats
+Authorization: Bearer {{adminToken}}
+# Frontend cleared localStorage but server still verifies JWT (expiresIn 1d) — expected 200
+
+# -------------------------------------------------------------------------
+# 4. Role mismatch → 403 (roleMiddleware.js:5)
+#    Also notification ownership check: server/controllers/notificationController.js:15
+# -------------------------------------------------------------------------
+
+### 4.1 Admin token on doctor route — expect 403 Access denied
+GET {{baseUrl}}/api/doctors/profile
+Authorization: Bearer {{adminToken}}
+
+### 4.2 Notification cross-role — doctor token fetching admin notifications — expect 403
+GET {{baseUrl}}/api/notifications/admin/1
+Authorization: Bearer {{doctorToken}}
+
+# -------------------------------------------------------------------------
+# 5. Manual UX steps — not curl, do in browser (see docs/INACTIVITY_AUTO_LOGOUT.md §3.1)
+# -------------------------------------------------------------------------
+# 5.1 Login → open dashboard → idle 5m (no mousemove/click/keydown/scroll/touchstart) → auto redirect to /login + banner "You have been logged out due to inactivity."
+# 5.2 Move mouse/click within 5m → timer resets (mousemove throttled 3s, useInactivityLogout.js:29)
+# 5.3 Manual Logout → redirect without banner
+# 5.4 Refresh login after banner → banner disappears (one-time removeItem)
+# 5.5 Multi-login: login as admin → visit /doctor-login → see "You are already logged in. Please logout first." → click Logout → form appears → login as doctor succeeds
+# Dev shortcut: temporarily set useInactivityLogout(handleInactivityLogout, 10*1000) for 10s test

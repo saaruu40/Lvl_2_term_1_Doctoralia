@@ -1,10 +1,10 @@
 // Central helper for Doctor schedule management window
-// TEMP TESTING: window 1:30 AM through 12:00 PM inclusive — Asia/Dhaka
+// Window 8:00 PM (20:00) through 12:00 AM (24:00) inclusive — Asia/Dhaka
 // Fixable dates: any date from today through Dec 31 of same Dhaka year (today -> year end)
 
 const TIMEZONE = process.env.TIMEZONE || "Asia/Dhaka";
-const WINDOW_START_MIN = 1 * 60 + 30;    // 1:30 AM = 90
-const WINDOW_END_MIN = 12 * 60;    // 12:00 PM = 720
+const WINDOW_START_MIN = 20 * 60;    // 8:00 PM = 1200
+const WINDOW_END_MIN = 24 * 60;    // 12:00 AM = 1440 (24:00, end of day)
 
 function getNowInTimezone(date = new Date()) {
   // Convert to target timezone and extract wall-time components
@@ -64,7 +64,7 @@ function getTargetDateStr(now = new Date()) {
 
 function isWithinScheduleWindow(now = new Date()) {
   const { minutes } = getNowInTimezone(now);
-  // Inclusive 12:55 PM (775) and 6:00 PM (1080) — for next day
+  // Inclusive 8:00 PM (1200) through 12:00 AM (24:00 = 1440) — 24:00 is end of day, not next day's 00:00
   return minutes >= WINDOW_START_MIN && minutes <= WINDOW_END_MIN;
 }
 
@@ -85,20 +85,20 @@ function getScheduleWindowStatus(now = new Date()) {
     timezone: TIMEZONE,
     currentDate,
     targetDate,
-    window: "01:30-12:00",
+    window: "20:00-24:00",
     isOpen,
     currentTime: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
     minutes,
     message: isOpen
-      ? `You can set schedule for today through Dec 31 between 1:30 AM and 12:00 PM. Today: ${currentDate}`
-      : "Doctor schedules can only be managed between 1:30 AM and 12:00 PM.",
+      ? `You can set schedule for today through Dec 31 between 8:00 PM and 12:00 AM. Today: ${currentDate}`
+      : "Doctor schedules can only be managed between 8:00 PM and 12:00 AM.",
   };
 }
 
 function assertScheduleWindow(now = new Date()) {
   if (!isWithinScheduleWindow(now)) {
     const status = getScheduleWindowStatus(now);
-    const err = new Error("Doctor schedules can only be managed between 1:30 AM and 12:00 PM.");
+    const err = new Error("Doctor schedules can only be managed between 8:00 PM and 12:00 AM.");
     err.status = 403;
     err.code = "WINDOW_CLOSED";
     err.details = status;

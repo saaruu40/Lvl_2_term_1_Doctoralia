@@ -6,6 +6,19 @@ const authMiddleware =
 const roleMiddleware =
   require("../middleware/roleMiddleware");
 
+// Verify that JWT patient_id matches :id or :patientId param (403 if mismatch)
+const verifyPatientOwnership = (req, res, next) => {
+  const tokenPatientId = req.user && req.user.patient_id;
+  const paramId = req.params.id || req.params.patientId;
+  if (!tokenPatientId) {
+    return res.status(401).json({ message: "Unauthorized. Please login as patient." });
+  }
+  if (String(tokenPatientId) !== String(paramId)) {
+    return res.status(403).json({ message: "Forbidden: you can only access your own data." });
+  }
+  next();
+};
+
 const {
   registerPatient,
   loginPatient,
@@ -111,16 +124,22 @@ router.get(
 
 
 // ===============================
-// PROFILE
+// PROFILE — patient can only view/update own (auth+role+own check)
 // ===============================
 
 router.get(
   "/profile/:id",
+  authMiddleware,
+  roleMiddleware("patient"),
+  verifyPatientOwnership,
   getPatientProfile
 );
 
 router.put(
   "/profile/:id",
+  authMiddleware,
+  roleMiddleware("patient"),
+  verifyPatientOwnership,
   updatePatientProfile
 );
 
@@ -138,36 +157,48 @@ router.post(
 
 router.get(
   "/:patientId/appointments",
+  authMiddleware,
+  roleMiddleware("patient"),
+  verifyPatientOwnership,
   getPatientAppointments
 );
 
 router.delete(
   "/appointments/:id",
+  authMiddleware,
+  roleMiddleware("patient"),
   deleteAppointment
 );
 
 
 // ===============================
-// PAYMENT
+// PAYMENT — patient_id from JWT only (auth+role)
 // ===============================
 
 router.post(
   "/payments",
+  authMiddleware,
+  roleMiddleware("patient"),
   makePayment
 );
 
 
 // ===============================
-// COMPLAINT
+// COMPLAINT — patient_id from JWT, own check for GET
 // ===============================
 
 router.post(
   "/complaints",
+  authMiddleware,
+  roleMiddleware("patient"),
   createPatientComplaint
 );
 
 router.get(
   "/:patientId/complaints",
+  authMiddleware,
+  roleMiddleware("patient"),
+  verifyPatientOwnership,
   getPatientComplaints
 );
 // ===============================

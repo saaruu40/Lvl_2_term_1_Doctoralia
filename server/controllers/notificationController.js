@@ -12,6 +12,16 @@ role,
 id
 }=req.params;
 
+    // Better authorization: users can only fetch their own notifications
+    // req.user comes from authMiddleware ( { admin_id|doctor_id|patient_id|staff_id, role } )
+    if (req.user) {
+      const tokenRole = req.user.role;
+      const tokenId = String(req.user[`${tokenRole}_id`] ?? req.user.admin_id ?? req.user.doctor_id ?? req.user.patient_id ?? req.user.staff_id ?? "");
+      if (String(role) !== String(tokenRole) || String(id) !== tokenId) {
+        return res.status(403).json({ message: "Access denied. You can only access your own notifications." });
+      }
+    }
+
 
 
 const result = await pool.query(
