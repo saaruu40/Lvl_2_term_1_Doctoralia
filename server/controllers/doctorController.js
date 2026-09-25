@@ -1556,6 +1556,7 @@ const createReferral = async (req, res) => {
     const referralResult =
       await client.query(
         `INSERT INTO referral (
+           patient_id,
           appointment_id,
           referred_by,
           referred_to,
@@ -1565,6 +1566,7 @@ const createReferral = async (req, res) => {
          )
 
          VALUES (
+           (SELECT patient_id FROM appointment WHERE appointment_id=$1),
           $1,
           $2,
           $3,

@@ -478,6 +478,7 @@ const loadReferrals = async () => {
         data.referrals || []
       );
     }
+ 
 
   } catch (error) {
     console.error(
@@ -1879,6 +1880,106 @@ notifications.map((n)=>(
 
   </section>
 )}
+    {/* REFERRALS */}
+
+{section === "referrals" && (
+
+<section>
+
+<h1>
+  My Referrals
+</h1>
+
+
+{
+referrals.length === 0 ? (
+
+<p>
+No referrals found.
+</p>
+
+) : (
+
+<div>
+
+{
+referrals.map((referral)=>(
+
+<div
+className="prescription-card"
+key={referral.referral_id}
+>
+
+
+<h3>
+Referral #{referral.referral_id}
+</h3>
+
+
+<p>
+<strong>
+Appointment ID:
+</strong>
+ #{referral.appointment_id}
+</p>
+
+
+<p>
+<strong>
+Referred By:
+</strong>
+ {referral.referred_by_name || referral.referred_by}
+</p>
+
+
+<p>
+<strong>
+Referred To:
+</strong>
+ {referral.referred_to_name || referral.referred_to}
+</p>
+
+
+<p>
+<strong>
+Reason:
+</strong>
+ {referral.reason}
+</p>
+
+
+<p>
+<strong>
+Status:
+</strong>
+ {referral.referral_status}
+</p>
+
+
+<p>
+<strong>
+Date:
+</strong>
+ {new Date(referral.referral_date).toLocaleDateString()}
+</p>
+
+
+</div>
+
+))
+
+}
+
+</div>
+
+)
+
+}
+
+</section>
+
+)}
+
         {/* COMPLAINTS */}
 
         {section === "complaints" && (

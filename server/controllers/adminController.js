@@ -342,6 +342,10 @@ const approveDoctor = async (req, res) => {
         message: "Pending doctor application not found.",
       });
     }
+    await pool.query(
+  "CALL create_doctor_welcome_notification($1)",
+  [doctorId]
+);
 
     return res.status(200).json({
       message: "Doctor approved successfully.",
@@ -483,7 +487,10 @@ const approveStaff = async (req, res) => {
         message: "Pending staff application not found.",
       });
     }
-
+await pool.query(
+  "CALL create_staff_welcome_notification($1)",
+  [staffId]
+);
     return res.status(200).json({
       message: "Staff approved successfully.",
       staff: result.rows[0],

@@ -1105,3 +1105,57 @@ BEGIN
   RETURN v;
 END;
 $$;
+
+CREATE OR REPLACE PROCEDURE create_doctor_welcome_notification(
+    p_doctor_id INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+
+    INSERT INTO notification(
+        receiver_role,
+        receiver_id,
+        title,
+        message,
+        related_type,
+        related_id
+    )
+    VALUES(
+        'doctor',
+        p_doctor_id,
+        'Welcome to Doctoralia',
+        'Your doctor account has been approved successfully. ',
+        'doctor',
+        p_doctor_id
+    );
+
+END;
+$$;
+
+CREATE OR REPLACE PROCEDURE create_staff_welcome_notification(
+    p_staff_id INT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+
+    INSERT INTO notification(
+        receiver_role,
+        receiver_id,
+        title,
+        message,
+        related_type,
+        related_id
+    )
+    VALUES(
+        'staff',
+        p_staff_id,
+        'Welcome to Doctoralia',
+        'Your staff account has been approved successfully.',
+        'staff',
+        p_staff_id
+    );
+
+END;
+$$;
