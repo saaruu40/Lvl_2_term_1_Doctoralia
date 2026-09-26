@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-//import { useNavigate } from "react-router-dom";
+
 import { useNavigate, Link } from "react-router-dom";
 import "../styles/AdminDashboard.css";
 import logo from "../assets/logo.jfif";
@@ -145,11 +145,38 @@ function AdminDashboard() {
       console.error(error);
     }
   };
+// const loadNotifications = async()=>{
+
+// try{
+
+// const res = await axios.get(
+// `http://localhost:5000/api/notifications/admin/${storedAdmin.admin_id}`
+// );
+
+
+// setNotifications(
+// res.data.notifications
+// );
+
+
+// }
+
+// catch(error){
+
+// console.log(
+// "Notification error",
+// error
+// );
+
+// }
+
+// };
 const loadNotifications = async()=>{
 
 try{
 
 const token = localStorage.getItem("token");
+
 const res = await axios.get(
 `http://localhost:5000/api/notifications/admin/${storedAdmin.admin_id}`,
 { headers: { Authorization: `Bearer ${token}` } }
@@ -173,7 +200,6 @@ error
 }
 
 };
-
   const loadPendingDoctors = async () => {
     try {
       const response = await authFetch(
@@ -337,9 +363,7 @@ error
           headers: {
             "Content-Type": "application/json",
           },
-          // body: JSON.stringify({
-          //   admin_id: storedAdmin.admin_id,
-          // }),
+         
         }
       );
 
@@ -423,9 +447,7 @@ error
             "Content-Type": "application/json",
           },
 
-          // body: JSON.stringify({
-          //   admin_id: storedAdmin.admin_id,
-          // }),
+         
         }
       );
 
@@ -597,38 +619,7 @@ error
   };
 
 
-  const deleteDepartment = async (
-    departmentId
-  ) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this department?"
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const response = await authFetch(
-        `${API}/departments/${departmentId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message);
-      }
-
-      setMessage(data.message);
-
-      await loadDepartments(deptSearch);
-      await loadStats();
-
-    } catch (error) {
-      setMessage(error.message);
-    }
-  };
+ 
 
   const disableDepartment = async (departmentId) => {
   try {
@@ -809,7 +800,18 @@ const enableDepartment = async (departmentId) => {
           )}
         </button>
 
-
+    <button
+          onClick={() =>
+            setSection("notifications")
+          }
+        >
+          Notifications
+          {notifications.length > 0 && (
+            <span className="notification-count">
+              {notifications.length}
+            </span>
+          )}
+        </button>
         <button
           onClick={() =>
             setSection("profile")
@@ -1321,7 +1323,7 @@ const enableDepartment = async (departmentId) => {
 
           </>
         )}
-        <div className="notification-box">
+        {/* <div className="notification-box">
 
 <h3>
 Notifications
@@ -1358,7 +1360,7 @@ notifications.map((n)=>(
 }
 
 
-</div>
+</div> */}
 
 
         {/* DEPARTMENTS */}
@@ -1497,17 +1499,7 @@ notifications.map((n)=>(
                       >
                         Edit
                       </button>
-{/* 
-                      <button
-                        className="reject-button"
-                        onClick={() =>
-                          deleteDepartment(
-                            department.department_id
-                          )
-                        }
-                      >
-                        Delete
-                      </button> */}
+
                       {department.status === "active" ? (
 
   <button 
@@ -1766,7 +1758,44 @@ notifications.map((n)=>(
 
           </section>
         )}
+        {/* NOTIFICATIONS */}
 
+        {section === "notifications" && (
+          <section className="dashboard-panel">
+
+            <h2>Notifications</h2>
+
+            {notifications.length === 0 ? (
+
+              <p>No notifications</p>
+
+            ) : (
+
+              notifications.map((n) => (
+
+                <div
+                  key={n.notification_id}
+                  style={{
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <h4 style={{ margin: "0 0 6px 0" }}>{n.title}</h4>
+                  <p style={{ margin: "0 0 6px 0" }}>{n.message}</p>
+                  <small style={{ color: "#6b7280" }}>
+                    {new Date(n.created_at).toLocaleString()}
+                  </small>
+                </div>
+
+              ))
+
+            )}
+
+          </section>
+        )}
 
         {/* PROFILE */}
 

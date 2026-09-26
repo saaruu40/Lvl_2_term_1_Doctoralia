@@ -1726,7 +1726,38 @@ setMessageType("error"); }
           Complaints
         </button>
 
-
+ <button
+          onClick={() =>
+            setSection(
+              "complaints"
+            )
+          }
+        >
+          Complaints
+        </button>
+        <button
+          onClick={() =>
+            setSection(
+              "notifications"
+            )
+          }
+        >
+          Notifications
+          {notifications.length > 0 && (
+            <span
+              style={{
+                marginLeft: "6px",
+                background: "#ef4444",
+                color: "white",
+                borderRadius: "50%",
+                padding: "2px 7px",
+                fontSize: "11px",
+              }}
+            >
+              {notifications.length}
+            </span>
+          )}
+        </button>
         <button
           onClick={() =>
             setSection(
@@ -1737,6 +1768,7 @@ setMessageType("error"); }
           My Profile
         </button>
 
+   
 
         <button
           className="logout-button"
@@ -2555,7 +2587,7 @@ setMessageType("error"); }
 
           </section>
         )}
-<div className="notification-box">
+{/* <div className="notification-box">
 
 <h3>
 Notifications
@@ -2592,7 +2624,50 @@ notifications.map((n)=>(
 }
 
 
-</div>
+</div> */}
+        {/* NOTIFICATIONS */}
+
+        {section === "notifications" && (
+
+          <section>
+
+            <h1>Notifications</h1>
+
+            <div className="notification-box">
+
+              {notifications.length === 0 ? (
+
+                <p>No notifications</p>
+
+              ) : (
+
+                notifications.map((n) => (
+
+                  <div
+                    key={n.notification_id}
+                    style={{
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <h4 style={{ margin: "0 0 6px 0" }}>{n.title}</h4>
+                    <p style={{ margin: "0 0 6px 0" }}>{n.message}</p>
+                    <small style={{ color: "#6b7280" }}>
+                      {new Date(n.created_at).toLocaleString()}
+                    </small>
+                  </div>
+
+                ))
+
+              )}
+
+            </div>
+
+          </section>
+        )}
 
         {/* =============================
             COMPLAINT

@@ -935,7 +935,18 @@ const loadReferrals = async () => {
         >
           Complaints
         </button>
-
+<button
+  onClick={() =>
+    setSection("notifications")
+  }
+>
+  Notifications
+  {notifications.length > 0 && (
+    <span style={{ marginLeft: "6px", background: "#ef4444", color: "white", borderRadius: "50%", padding: "2px 7px", fontSize: "11px" }}>
+      {notifications.length}
+    </span>
+  )}
+</button>
 
         <button
           onClick={() =>
@@ -1341,7 +1352,7 @@ const loadReferrals = async () => {
 
           </section>
         )}
-
+{/* 
  <div className="notification-box">
 
 <h3>
@@ -1379,7 +1390,7 @@ notifications.map((n)=>(
 }
 
 
-</div>
+</div> */}
         {/* APPOINTMENTS */}
 
         {section === "appointments" && (
@@ -1881,6 +1892,149 @@ notifications.map((n)=>(
 
   </section>
 )}
+
+{section === "referrals" && (
+
+<section>
+
+<h1>
+  My Referrals
+</h1>
+
+
+{
+referrals.length === 0 ? (
+
+<p>
+No referrals found.
+</p>
+
+) : (
+
+<div>
+
+{
+referrals.map((referral)=>(
+
+<div
+className="prescription-card"
+key={referral.referral_id}
+>
+
+
+<h3>
+Referral #{referral.referral_id}
+</h3>
+
+
+<p>
+<strong>
+Appointment ID:
+</strong>
+ #{referral.appointment_id}
+</p>
+
+
+<p>
+<strong>
+Referred By:
+</strong>
+ {referral.referred_by_name || referral.referred_by}
+</p>
+
+
+<p>
+<strong>
+Referred To:
+</strong>
+ {referral.referred_to_name || referral.referred_to}
+</p>
+
+
+<p>
+<strong>
+Reason:
+</strong>
+ {referral.reason}
+</p>
+
+
+<p>
+<strong>
+Status:
+</strong>
+ {referral.referral_status}
+</p>
+
+
+<p>
+<strong>
+Date:
+</strong>
+ {new Date(referral.referral_date).toLocaleDateString()}
+</p>
+
+
+</div>
+
+))
+
+}
+
+</div>
+
+)
+
+}
+
+</section>
+
+)}
+    {/* NOTIFICATIONS */}
+
+        {section === "notifications" && (
+
+          <section>
+
+            <h1>Notifications</h1>
+
+            <div className="notification-box">
+
+              {notifications.length === 0 ? (
+
+                <p>No notifications</p>
+
+              ) : (
+
+                notifications.map((n) => (
+
+                  <div
+                    key={n.notification_id}
+                    style={{
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      padding: "12px 16px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    <h4 style={{ margin: "0 0 6px 0" }}>{n.title}</h4>
+                    <p style={{ margin: "0 0 6px 0" }}>{n.message}</p>
+                    <small style={{ color: "#6b7280" }}>
+                      {new Date(n.created_at).toLocaleString()}
+                    </small>
+                  </div>
+
+                ))
+
+              )}
+
+            </div>
+
+          </section>
+        )}
+
+
         {/* COMPLAINTS */}
 
         {section === "complaints" && (
