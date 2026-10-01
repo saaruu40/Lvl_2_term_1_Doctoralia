@@ -1716,15 +1716,7 @@ setMessageType("error"); }
         </button>
 
 
-        <button
-          onClick={() =>
-            setSection(
-              "complaints"
-            )
-          }
-        >
-          Complaints
-        </button>
+      
 
  <button
           onClick={() =>
